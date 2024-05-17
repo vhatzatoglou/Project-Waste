@@ -2351,7 +2351,7 @@ void transmit_data()
     delay(5000);
     SPIFFS.begin();
 
-    for (int i1 = 0; i1 < 150; i1++)
+    for (int i1 = 0; i1 < 50; i1++)
     {
       if (SPIFFS.exists("/Datalist_" + String(i1)))
       {
@@ -2360,7 +2360,7 @@ void transmit_data()
         if (f)
         {
 
-           restore_Datalist(i1);
+           restore_Datalist(i1);;
            //restore_LostDatalist(i1);
           if (Datalist.size() > 0)
             secure_postlog_gprs();
