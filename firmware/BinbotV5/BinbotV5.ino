@@ -1,4 +1,40 @@
-#include <ADXL345.h>
+//#include <ADXL345.h>
+//I2Cdev and MPU6050 must be installed as libraries, or else the .cpp/.h files
+// for both classes must be in the include path of your project
+#include "I2Cdev.h"
+//#include "MPU6050.h"
+#include "MPU6050_6Axis_MotionApps20.h"
+#if I2CDEV_IMPLEMENTATION == I2CDEV_ARDUINO_WIRE
+    #include "Wire.h"
+#endif
+
+// class default I2C address is 0x68
+// specific I2C addresses may be passed as a parameter here
+// AD0 low = 0x68 (default for InvenSense evaluation board)
+// AD0 high = 0x69
+MPU6050 accelgyro;
+//MPU6050 accelgyro(0x69); // <-- use for AD0 high
+
+int16_t ax, ay, az;
+int16_t gx, gy, gz;
+
+#define OUTPUT_READABLE_ACCELGYRO
+// MPU control/status vars
+bool dmpReady = false;  // set true if DMP init was successful
+uint8_t mpuIntStatus;   // holds actual interrupt status byte from MPU
+uint8_t devStatus;      // return status after each device operation (0 = success, !0 = error)
+uint16_t packetSize;    // expected DMP packet size (default is 42 bytes)
+uint16_t fifoCount;     // count of all bytes currently in FIFO
+uint8_t fifoBuffer[64]; // FIFO storage buffer
+
+// orientation/motion vars
+Quaternion q;           // [w, x, y, z]         quaternion container
+VectorInt16 aa;         // [x, y, z]            accel sensor measurements
+VectorInt16 aaReal;     // [x, y, z]            gravity-free accel sensor measurements
+VectorInt16 aaWorld;    // [x, y, z]            world-frame accel sensor measurements
+VectorFloat gravity;    // [x, y, z]            gravity vector
+ 
+const char DEVICE_NAME[] = "mpu6050";
 
 
 #define TINY_GSM_RX_BUFFER 1024 // Set RX buffer to 1Kb
@@ -44,7 +80,7 @@ TinyGsm modem(SerialAT);
 #include "NfcAdapter.h"
 
 #include <Ticker.h>
-#include <ADXL345.h>
+//#include <ADXL345.h>
 #include "AES.h"
 #include "Base64.h"
 
@@ -52,10 +88,10 @@ AES aes;
 
 // Our AES key. Same in NodeJS but in hex bytes
 byte key[] = {0x53, 0x40, 0x66, 0x65, 0x62, 0x30, 0x74, 0x54, 0x68, 0x65, 0x33, 0x21, 0x21, 0x21, 0x21, 0x40};
-ADXL345 adxl; //variable adxl is an instance of the ADXL345 library
+//ADXL345 adxl; //variable adxl is an instance of the ADXL345 library
 TaskHandle_t Task1;
 TaskHandle_t Task2;
-double ax,ay,az;
+//double ax,ay,az;
 String str, CCID;
 int i;
 int we;
@@ -75,7 +111,7 @@ int chgTimesNew = 2;
 int p, DAY1, MONTH_, YEAR_, YEAR1, Seconds_, Hours_, Minutes_, hourOfDay, DAY_OF_WEEK, hasModemSIM, contentLength;
 boolean GPRS_on;
 bool reply = false;
-int ADXL345 = 0x53;
+//int ADXL345 = 0x53;
 float X_out, Y_out, Z_out;  // Outputs
 enum _LockerStatus
 {
@@ -2575,54 +2611,71 @@ void checkVersion()
 //     }
 //   }
 // }
+void SetAccelerometer1()
+{
+  // adxl.powerOn();
+
+  // //set activity/ inactivity thresholds (0-255)
+  // adxl.setActivityThreshold(75); //62.5mg per increment
+  // adxl.setInactivityThreshold(75); //62.5mg per increment
+  // adxl.setTimeInactivity(10); // how many seconds of no activity is inactive?
+ 
+  // //look of activity movement on this axes - 1 == on; 0 == off 
+  // adxl.setActivityX(1);
+  // adxl.setActivityY(1);
+  // adxl.setActivityZ(1);
+ 
+  // //look of inactivity movement on this axes - 1 == on; 0 == off
+  // adxl.setInactivityX(1);
+  // adxl.setInactivityY(1);
+  // adxl.setInactivityZ(1);
+ 
+  // //look of tap movement on this axes - 1 == on; 0 == off
+  // adxl.setTapDetectionOnX(0);
+  // adxl.setTapDetectionOnY(0);
+  // adxl.setTapDetectionOnZ(1);
+ 
+  // //set values for what is a tap, and what is a double tap (0-255)
+  // adxl.setTapThreshold(50); //62.5mg per increment
+  // adxl.setTapDuration(15); //625us per increment
+  // adxl.setDoubleTapLatency(80); //1.25ms per increment
+  // adxl.setDoubleTapWindow(200); //1.25ms per increment
+ 
+  // //set values for what is considered freefall (0-255)
+  // adxl.setFreeFallThreshold(7); //(5 - 9) recommended - 62.5mg per increment
+  // adxl.setFreeFallDuration(45); //(20 - 70) recommended - 5ms per increment
+ 
+  // //setting all interrupts to take place on int pin 1
+  // //I had issues with int pin 2, was unable to reset it
+  // adxl.setInterruptMapping( ADXL345_INT_SINGLE_TAP_BIT,   ADXL345_INT1_PIN );
+  // adxl.setInterruptMapping( ADXL345_INT_DOUBLE_TAP_BIT,   ADXL345_INT1_PIN );
+  // adxl.setInterruptMapping( ADXL345_INT_FREE_FALL_BIT,    ADXL345_INT1_PIN );
+  // adxl.setInterruptMapping( ADXL345_INT_ACTIVITY_BIT,     ADXL345_INT1_PIN );
+  // adxl.setInterruptMapping( ADXL345_INT_INACTIVITY_BIT,   ADXL345_INT1_PIN );
+ 
+  // //register interrupt actions - 1 == on; 0 == off  
+  // adxl.setInterrupt( ADXL345_INT_SINGLE_TAP_BIT, 1);
+  // adxl.setInterrupt( ADXL345_INT_DOUBLE_TAP_BIT, 1);
+  // adxl.setInterrupt( ADXL345_INT_FREE_FALL_BIT,  1);
+  // adxl.setInterrupt( ADXL345_INT_ACTIVITY_BIT,   1);
+  // adxl.setInterrupt( ADXL345_INT_INACTIVITY_BIT, 1);
+}
+
 void SetAccelerometer()
 {
-  adxl.powerOn();
+  // join I2C bus (I2Cdev library doesn't do this automatically)
+    #if I2CDEV_IMPLEMENTATION == I2CDEV_ARDUINO_WIRE
+        Wire.begin();
+    #elif I2CDEV_IMPLEMENTATION == I2CDEV_BUILTIN_FASTWIRE
+        Fastwire::setup(400, true);
+    #endif
+    Serial.println("Initializing I2C devices...");
+    accelgyro.initialize();
 
-  //set activity/ inactivity thresholds (0-255)
-  adxl.setActivityThreshold(75); //62.5mg per increment
-  adxl.setInactivityThreshold(75); //62.5mg per increment
-  adxl.setTimeInactivity(10); // how many seconds of no activity is inactive?
- 
-  //look of activity movement on this axes - 1 == on; 0 == off 
-  adxl.setActivityX(1);
-  adxl.setActivityY(1);
-  adxl.setActivityZ(1);
- 
-  //look of inactivity movement on this axes - 1 == on; 0 == off
-  adxl.setInactivityX(1);
-  adxl.setInactivityY(1);
-  adxl.setInactivityZ(1);
- 
-  //look of tap movement on this axes - 1 == on; 0 == off
-  adxl.setTapDetectionOnX(0);
-  adxl.setTapDetectionOnY(0);
-  adxl.setTapDetectionOnZ(1);
- 
-  //set values for what is a tap, and what is a double tap (0-255)
-  adxl.setTapThreshold(50); //62.5mg per increment
-  adxl.setTapDuration(15); //625us per increment
-  adxl.setDoubleTapLatency(80); //1.25ms per increment
-  adxl.setDoubleTapWindow(200); //1.25ms per increment
- 
-  //set values for what is considered freefall (0-255)
-  adxl.setFreeFallThreshold(7); //(5 - 9) recommended - 62.5mg per increment
-  adxl.setFreeFallDuration(45); //(20 - 70) recommended - 5ms per increment
- 
-  //setting all interrupts to take place on int pin 1
-  //I had issues with int pin 2, was unable to reset it
-  adxl.setInterruptMapping( ADXL345_INT_SINGLE_TAP_BIT,   ADXL345_INT1_PIN );
-  adxl.setInterruptMapping( ADXL345_INT_DOUBLE_TAP_BIT,   ADXL345_INT1_PIN );
-  adxl.setInterruptMapping( ADXL345_INT_FREE_FALL_BIT,    ADXL345_INT1_PIN );
-  adxl.setInterruptMapping( ADXL345_INT_ACTIVITY_BIT,     ADXL345_INT1_PIN );
-  adxl.setInterruptMapping( ADXL345_INT_INACTIVITY_BIT,   ADXL345_INT1_PIN );
- 
-  //register interrupt actions - 1 == on; 0 == off  
-  adxl.setInterrupt( ADXL345_INT_SINGLE_TAP_BIT, 1);
-  adxl.setInterrupt( ADXL345_INT_DOUBLE_TAP_BIT, 1);
-  adxl.setInterrupt( ADXL345_INT_FREE_FALL_BIT,  1);
-  adxl.setInterrupt( ADXL345_INT_ACTIVITY_BIT,   1);
-  adxl.setInterrupt( ADXL345_INT_INACTIVITY_BIT, 1);
+    // verify connection
+    Serial.println("Testing device connections...");
+    Serial.println(accelgyro.testConnection() ? "MPU6050 connection successful" : "MPU6050 connection failed");
+
 }
 
 void Read_GPS_LatLon()
@@ -2648,27 +2701,80 @@ void Read_GPS_LatLon()
 
     disableGPS();
 }
-
 void ReadAccelerometer()
 {
-  	//Boring accelerometer stuff   
-	int x,y,z;  
-	adxl.readXYZ(&x, &y, &z); //read the accelerometer values and store them in variables  x,y,z
+   // read raw accel/gyro measurements from device
+    accelgyro.getMotion6(&ax, &ay, &az, &gx, &gy, &gz);
+   float accAngleX, accAngleY, gyroAngleX, gyroAngleY, gyroAngleZ;
+   float roll, pitch, yaw;
+    accAngleX = (atan(ay / sqrt(pow(ax, 2) + pow(az, 2))) * 180 / PI) - 0.58; // AccErrorX ~(0.58) See the calculate_IMU_error()custom function for more details
+    accAngleY = (atan(-1 * ax / sqrt(pow(ay, 2) + pow(az, 2))) * 180 / PI) + 1.58; // AccErrorY ~(-1.58)
+    Serial.println("accAngleY:"   + String (accAngleY)); 
+    Serial.println("accAngleX:" + String (accAngleX)); 
+
+    //***************************** ΑΠΟΚΟΜΙΔΗ IS ON ******************************
+    if ( (abs(accAngleX)>60.0 || abs(accAngleY)>60.0) && checkFullBin())   
+      {
+      // UnlockByServo();
+        beep(2);
+        Garbagecollection=1;
+        tagId="F9A8E904";
+        Serial.println("ΑΠΟΚΟΜΙΔΗ IS ON"); 
+      }
+
+  //****************************   VIOLATION DETECT  ****************************
+   if ( (abs(accAngleX)>60.0 || abs(accAngleY)>60.0)  &&  !checkFullBin()  ) //
+          {
+            int tries=0;
+            while ( tries<80) {
+              // read raw accel/gyro measurements from device
+                accelgyro.getMotion6(&ax, &ay, &az, &gx, &gy, &gz);
+                accAngleX = (atan(ay / sqrt(pow(ax, 2) + pow(az, 2))) * 180 / PI) - 0.58; // AccErrorX ~(0.58) See the calculate_IMU_error()custom function for more details
+                accAngleY = (atan(-1 * ax / sqrt(pow(ay, 2) + pow(az, 2))) * 180 / PI) + 1.58; // AccErrorY ~(-1.58)
+                Serial.println("accAngleY:"   + String (accAngleY)); 
+                Serial.println("accAngleX:" + String (accAngleX)); 
+              if ( (abs(accAngleX)<20.0 && abs(accAngleY)<20.0))
+               {
+                 return;
+               }
+               delay(1000);
+              tries++;
+            }
+            if ((abs(accAngleX)>60.0 || abs(accAngleY)>60.0))
+            {
+                  if (!checkSamePlace())
+                    prepare_Wifi_Gps_Data(Violation_Tilt);
+                  pinMode(GREEN_PIN, INPUT);
+                  Serial.println("**** VIOLATION DETECTED ****");
+                  //BEEP 2 TIMES TO INDICATE BIN IS FULL
+                  beep(2);
+                  transmit_data();
+                  storeSettings();
+                  done();
+                  return;
+            }
+          }
+}
+void ReadAccelerometer1()
+ {
+//   	//Boring accelerometer stuff   
+// 	int x,y,z;  
+// 	adxl.readXYZ(&x, &y, &z); //read the accelerometer values and store them in variables  x,y,z
 		
-	double xyz[3];
-	adxl.getAcceleration(xyz);
-	ax = xyz[0];
-	ay = xyz[1];
-	az = xyz[2];
-	Serial.print("X=");
-	Serial.println(ax);
-  if ( abs(ax)>0.60 && checkFullBin()) // ΑΠΟΚΟΜΙΔΗ IS ON 
-  {
-   // UnlockByServo();
-    beep(2);
-    Garbagecollection=1;
-    tagId="F9A8E904";
-  }
+// 	double xyz[3];
+// 	adxl.getAcceleration(xyz);
+// 	ax = xyz[0];
+// 	ay = xyz[1];
+// 	az = xyz[2];
+// 	Serial.print("X=");
+// 	Serial.println(ax);
+//   if ( abs(ax)>0.60 && checkFullBin()) // ΑΠΟΚΟΜΙΔΗ IS ON 
+//   {
+//    // UnlockByServo();
+//     beep(2);
+//     Garbagecollection=1;
+//     tagId="F9A8E904";
+//  }
 
   //****************************   VIOLATION DETECT  ****************************
    if ( abs(ax)>0.60 &&  !checkFullBin()  ) //
@@ -2930,9 +3036,9 @@ boolean scanWifi(String s="")
             APs=APs + ",{\"ss\":" + String("\"") +  String(rssi) +"\","  + "\"mac\":" + "\"" + mac  +"\"}"; 
             if ( s.indexOf(mac) >0 && s!="")
             {
-                //Serial.println(" - Same Place stop logging");
+                Serial.println(" - Same Place stop logging");
                 
-               // return true;
+               return true;
             }
       delay(0);
     }
@@ -3003,7 +3109,7 @@ void setup(void)
   Serial1.begin(9600, SERIAL_8N1, RXSCALE_PIN, TXSCALE_PIN, TXSCALE_PIN); //Scale port
   openScaleBin();
   openWifi();
-  SetAccelerometer();
+   
   //********************************************
   Working_time = millis();
   pinMode(DONE_PIN, OUTPUT);
@@ -3018,6 +3124,7 @@ void setup(void)
                              // different servos may require different min/max settings
                              // for an accurate 0 to 180 sweep
   Serial.begin(115200);
+  SetAccelerometer();
   xTaskCreatePinnedToCore(
       blinkGreen, /* Task function. */
       "Task1",    /* name of task. */
@@ -3047,7 +3154,7 @@ void setup(void)
         }
       }
     }
-    
+  
   //ΑΜΕΣΟ ΞΕΚΛΕΙΔΩΜΑ ΚΑΙ ΕΛΕΓΧΟΣ ΚΑΡΤΑΣ ΜΕΤΑ  
   unlock(); 
   nfc.begin();
@@ -3146,7 +3253,7 @@ void setup(void)
   Serial.println("*******   ΜΗΤΕΡΑ ΣΕ ΕΥΧΑΡΙΣΤΩ ΠΟΛΥ ΠΟΥ ΜΕ ΜΕΓΑΛΩΣΕΣ ΓΕΡΟ ΚΑΙ ΔΥΝΑΤΟ  ********");
   Serial.println("+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++");
   Serial.println("****************     STARTING   BINBOT SYSTEM  ver 5.0     ***************");
-  if (!checkSamePlace() && abs(ax)<0.20)
+  if (!checkSamePlace())
     {
        prepare_Wifi_Gps_Data(NewLocationDetected);
 
@@ -3181,7 +3288,8 @@ void loop()
     CheckNFC();
   }
   //δεν άνοιξε καθόλου ο κάδος
-  if (millis() - start_time > 25000 && digitalRead(STATUSSCALE_PIN) == Locker_Closed && lc == 0 )
+  if ( tagId == "")
+  if (millis() - start_time > 30000 && digitalRead(STATUSSCALE_PIN) == Locker_Closed && lc == 0 )
   {
     Working_time = millis() - Working_time;
     Serial.println("SYSTEM POWER OFF DUE NO TAG DETECTION");
@@ -3192,9 +3300,9 @@ void loop()
     done();
   }
 
-  //δεν ανοιξε ο κάδος λόγω προβλήματος ή  άλλου θέματος ή autostart
+  //δεν ανοιξε ο κάδος λόγω προβλήματος ή  άλλου θέματος  
   if (millis() - start_time > 35000 && System_Tag == 0)
-    if (digitalRead(STATUSSCALE_PIN) == Locker_Closed && lc == 0 && tagId != "")
+  if (digitalRead(STATUSSCALE_PIN) == Locker_Closed && lc == 0 && tagId != "")
     {
       Working_time = millis() - Working_time;
       Serial.println("SYSTEM POWER OFF BECAUSE COVER NOT OPENED");
