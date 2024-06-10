@@ -242,6 +242,13 @@ long working_period = millis();
 long nfc_period = millis();
 float batterylevel, voltage;
 String APs="",APs_="";
+int mVperAmp = 270;           // this the 5A version of the ACS712 -use 100 for 20A Module and 66 for 30A Module
+double Watt = 0;
+double TotalWatt = 0;
+double Voltage = 0;
+double VRMS = 0;
+double AmpsRMS = 0;
+
 void store_Tag(int type, String Id)
 {
 
@@ -408,7 +415,62 @@ void NFC_RST()
   delay(1000);
   pinMode(NFC_RST_PIN, INPUT);
 }
+
+ 
+
+float getVPP()
+{
+  float result;
+  int readValue;                // value read from the sensor
+  int maxValue = 0;             // store max value here
+  int minValue = 4096;          // store min value here ESP32 ADC resolution
+  
+   uint32_t start_time = millis();
+   while((millis()-start_time) < 1000) //sample for 1 Sec
+   {
+       readValue = analogRead(ADC_PIN);
+       // see if you have a new maxValue
+       if (readValue > maxValue) 
+       {
+           /*record the maximum sensor value*/
+           maxValue = readValue;
+       }
+       if (readValue < minValue) 
+       {
+           /*record the minimum sensor value*/
+           minValue = readValue;
+       }
+   }
+   
+   // Subtract min from max
+   result = ((maxValue - minValue) * 3.3)/4096.0; //ESP32 ADC resolution 4096
+      
+   return result;
+ }
 void check_battery()
+{
+  Voltage = getVPP();
+  VRMS = (Voltage/2.000) *0.707;   //root 2 is 0.707
+  AmpsRMS = ((VRMS * 1000)/mVperAmp); //0.3 is the error I got for my sensor
+ 
+  Serial.print(AmpsRMS);
+  Serial.print(" Amps RMS  ---  ");
+  Watt = (AmpsRMS*5.000/1.200);
+  // note: 1.2 is my own empirically established calibration factor
+// as the voltage measured at D34 depends on the length of the OUT-to-D34 wire
+// 240 is the main AC power voltage – this parameter changes locally
+  Serial.print(Watt);
+  Serial.print(" Watts");
+  TotalWatt=TotalWatt+Watt*1000/3600;
+  Serial.print("---Total mWh:" + String(TotalWatt));
+  double bat=(30*5*1000-TotalWatt)*100/(30*5*1000);
+  Serial.println("---Battery% :" + String(bat));
+
+
+
+}
+
+void check_battery_()
 {
   int analogValue = analogRead(ADC_PIN);
 
@@ -1035,6 +1097,7 @@ void blinkGreen(void *pvParameters)
   for (;;)
   {
     vTaskDelay(100);
+    check_battery();
     if (digitalRead(STATUSSCALE_PIN) == Locker_Closed && mustUnlock == 0)
     {
       if (we == 1)
