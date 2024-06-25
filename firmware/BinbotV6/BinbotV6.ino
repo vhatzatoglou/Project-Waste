@@ -13,6 +13,8 @@
 // AD0 low = 0x68 (default for InvenSense evaluation board)
 // AD0 high = 0x69
 MPU6050 accelgyro;
+float accAngleX, accAngleY, gyroAngleX, gyroAngleY, gyroAngleZ;
+float roll, pitch, yaw;
 //MPU6050 accelgyro(0x69); // <-- use for AD0 high
 
 int16_t ax, ay, az;
@@ -1126,6 +1128,7 @@ void blinkGreen(void *pvParameters)
 
       if ((millis() - delayTime) < 500 / p && (millis() - delayTime) > 0)
       {
+        
         pinMode(GREEN_PIN, OUTPUT);
         digitalWrite(GREEN_PIN, LOW);
        // digitalWrite(LED_PIN, !digitalRead(LED_PIN));
@@ -1137,9 +1140,11 @@ void blinkGreen(void *pvParameters)
       }
       if ((millis() - delayTime) > 1000 / p)
       {
+       
         delayTime = millis();
         pinMode(GREEN_PIN, OUTPUT);
         digitalWrite(GREEN_PIN, LOW);
+        
       }
     }
     else
@@ -2004,8 +2009,8 @@ void getSettings()
 
       BinFull = doc["BFL"];
       Serial.println("BinFull : " + String(BinFull));
-      mAh = doc["MAH"];
-      Serial.println("mAh : " + String(mAh));
+      TotalWatt = doc["MAH"];
+      Serial.println("mAh : " + String(TotalWatt));
       chgTimes = doc["CHG"];
       Serial.println("chgTimes : " + String(chgTimes));
       Serial.println("==========================================================");
@@ -2047,7 +2052,7 @@ void storeSettings()
 
     StaticJsonDocument<300> js;
     js["BFL"] = BinFull;
-    js["MAH"] = mAh;
+    js["MAH"] = TotalWatt;
     js["CHG"] = chgTimes;
 
     File f = SPIFFS.open("/Settings", "w");
@@ -2775,7 +2780,7 @@ void Read_GPS_LatLon()
     Serial.println("Start positioning . Make sure to locate outdoors.");
     Serial.println("The blue indicator light flashes to indicate positioning.");
     int tries=0;
-    while (1 && tries<150) {
+    while (1 && tries<350) {
         if (modem.getGPS(&lat, &lon)) {
             Serial.println("The location has been locked, the latitude and longitude are:");
             Serial.print("latitude:"); Serial.println(String(lat,8));
@@ -2792,46 +2797,60 @@ void Read_GPS_LatLon()
 void ReadAccelerometer()
 {
    // read raw accel/gyro measurements from device
-    accelgyro.getMotion6(&ax, &ay, &az, &gx, &gy, &gz);
-   float accAngleX, accAngleY, gyroAngleX, gyroAngleY, gyroAngleZ;
-   float roll, pitch, yaw;
-    accAngleX = (atan(ay / sqrt(pow(ax, 2) + pow(az, 2))) * 180 / PI) - 0.58; // AccErrorX ~(0.58) See the calculate_IMU_error()custom function for more details
-    accAngleY = (atan(-1 * ax / sqrt(pow(ay, 2) + pow(az, 2))) * 180 / PI) + 1.58; // AccErrorY ~(-1.58)
-    Serial.println("accAngleY:"   + String (accAngleY)); 
-    Serial.println("accAngleX:" + String (accAngleX)); 
+  accelgyro.getMotion6(&ax, &ay, &az, &gx, &gy, &gz);
+ 
+  accAngleX = (atan(ay / sqrt(pow(ax, 2) + pow(az, 2))) * 180 / PI) - 0.58; // AccErrorX ~(0.58) See the calculate_IMU_error()custom function for more details
+  accAngleY = (atan(-1 * ax / sqrt(pow(ay, 2) + pow(az, 2))) * 180 / PI) + 1.58; // AccErrorY ~(-1.58)
+  Serial.println("accAngleY:"   + String (accAngleY)); 
+  Serial.println("accAngleX:" + String (accAngleX)); 
 
     //***************************** ΑΠΟΚΟΜΙΔΗ IS ON ******************************
-    if ( (abs(accAngleX)>60.0 || abs(accAngleY)<20.0) )   
+    if ( (abs(accAngleX)>60.0 || abs(accAngleY)<30.0) )   
       {
       // UnlockByServo();
-        beep(2);
+      if (Garbagecollection==0)
+      {
+        
         Garbagecollection=1;
         tagId="F9A8E904";
         Serial.println("*************** ΑΠΟΚΟΜΙΔΗ ΣΕ ΕΞΕΛΙΞΗ *******************"); 
+        mustUnlock = 1;
+        CloseScaleBin();
+        unlock();
+        start_time = millis();
+        beep(1);
       }
+      }
+ 
+}
+int violationTime=0;
+void ProceessAccelerometer()
+{
+  if ((abs(accAngleX)<60.0 && abs(accAngleY)>30.0))
+           violationTime=0;         
 
   //****************************   VIOLATION DETECT  ****************************
-   if ( (abs(accAngleX)>60.0 || abs(accAngleY)<20.0)  && tagId=="111"  ) //
-          {
-            int tries=0;
-            while ( tries<80) {
-              // read raw accel/gyro measurements from device
-                accelgyro.getMotion6(&ax, &ay, &az, &gx, &gy, &gz);
-                accAngleX = (atan(ay / sqrt(pow(ax, 2) + pow(az, 2))) * 180 / PI) - 0.58; // AccErrorX ~(0.58) See the calculate_IMU_error()custom function for more details
-                accAngleY = (atan(-1 * ax / sqrt(pow(ay, 2) + pow(az, 2))) * 180 / PI) + 1.58; // AccErrorY ~(-1.58)
-                Serial.println("accAngleY:"   + String (accAngleY)); 
-                Serial.println("accAngleX:" + String (accAngleX)); 
-              if ( (abs(accAngleX)<20.0 && abs(accAngleY)<20.0))
-               {
-                 return;
-               }
-               delay(1000);
-              tries++;
-            }
-            if ((abs(accAngleX)>60.0 || abs(accAngleY)<20.0))
-            {
+  if ( (abs(accAngleX)>60.0 || abs(accAngleY)<30.0)   &&  violationTime==0 )
+        violationTime=millis();
+
+   if ( (abs(accAngleX)>60.0 || abs(accAngleY)<20.0)  &&   (millis()-violationTime) > 60000  &&  violationTime>0 ) 
+         {
                   if (!checkSamePlace())
                     prepare_Wifi_Gps_Data(Violation_Tilt);
+                  else
+                  {
+                      StaticJsonDocument<250> doc;
+                      doc["b_c"]=DSN;
+                      doc["b_s"]=Violation_Tilt;
+                      doc["dts"]="timestamp";
+                      if (lat>0)
+                      {
+                          doc["lat"]=String(lat,8);
+                          doc["lng"]=String(lon,8);
+                      }
+                      serializeJson(doc, s);
+                      Serial.println(s);
+                  } 
                   pinMode(GREEN_PIN, INPUT);
                   Serial.println("**** VIOLATION DETECTED ****");
                   //BEEP 2 TIMES TO INDICATE BIN IS FULL
@@ -2841,8 +2860,8 @@ void ReadAccelerometer()
                   done();
                   return;
             }
-          }
-}
+ }
+
 void ReadAccelerometer1()
  {
 //   	//Boring accelerometer stuff   
@@ -3126,6 +3145,7 @@ boolean scanWifi(String s="")
             if ( s.indexOf(mac) >0 && s!="")
             {
                 Serial.println(" - Same Place stop logging");
+                closeWifi();
                 sp=0;
                return true;
             }
@@ -3218,6 +3238,8 @@ void setup(void)
                              // for an accurate 0 to 180 sweep
   Serial.begin(115200);
   SetAccelerometer();
+  nfc.begin();
+  getSettings();
   xTaskCreatePinnedToCore(
       blinkGreen, /* Task function. */
       "Task1",    /* name of task. */
@@ -3227,23 +3249,24 @@ void setup(void)
       &Task1,     /* Task handle to keep track of created task */
       0);         /* pin task to core 0 */
  
-  nfc.begin();
-  while (millis() - start_time < 20000 && tagId == "")
+  
+  while (millis() - start_time < 30000 && tagId == "" && Garbagecollection==0)
   {
     Serial.println("NFC Reader Start reading...");
     //if ( digitalRead(STATUSSCALE_PIN) == Locker_Closed)
     readNFC();
     ReadAccelerometer();
-    if (!nfc.begin())
-    {
-      //nfc = NfcAdapter(pn532_i2c);
+    ProceessAccelerometer();
+    // if (!nfc.begin())
+    // {
+    //   //nfc = NfcAdapter(pn532_i2c);
 
-      Serial.println("Nfc restart");
-      NFC_RST();
-      delay(100);
-      nfc.begin();
-      nfc_period = millis() - 14000;
-    }
+    //   Serial.println("Nfc restart");
+    //   NFC_RST();
+    //   delay(100);
+    //   nfc.begin();
+    //   nfc_period = millis() - 14000;
+    // }
   }
   restore_Tags();
   if (!readTaglist())
@@ -3270,7 +3293,7 @@ void setup(void)
   // f.close();
   
   getSerial();
-  getSettings();
+  
   if (chgTimes != chgTimesNew)
   {
     Serial.println("chgTimes New ");
@@ -3340,7 +3363,7 @@ void setup(void)
   Serial.println("*******   ΜΗΤΕΡΑ ΣΕ ΕΥΧΑΡΙΣΤΩ ΠΟΛΥ ΠΟΥ ΜΕ ΜΕΓΑΛΩΣΕΣ ΓΕΡΟ ΚΑΙ ΔΥΝΑΤΟ  ********");
   Serial.println("+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++");
   Serial.println("****************     STARTING   BINBOT SYSTEM  ver 5.0     ***************");
-  
+   
    
  }
 boolean readTaglist()
@@ -3377,6 +3400,8 @@ void loop()
   if (stopWorking == 1)
     return;
   ReadAccelerometer();
+  ProceessAccelerometer();
+   
   if (mustUnlock == 1 && System_Tag == 0)
   {
     unlock();
@@ -3391,7 +3416,7 @@ void loop()
   }
 
    //δεν ανιχνευτηκε κάποιο Tag
-  if (millis() - start_time > 25000 && tagId == "")
+  if (millis() - start_time > 30000 && tagId == "")
   {
     Working_time = millis() - Working_time;
     Serial.println("SYSTEM POWER OFF DUE NO TAG DETECTION");
@@ -3543,7 +3568,7 @@ void loop()
   //if (millis() - start_time > 4000)
   if (digitalRead(STATUSSCALE_PIN) == Locker_Closed && lc == 1)
   {
-
+ 
     if (lc == 1)
     {
       if (Garbagecollection == 1)
@@ -3552,6 +3577,8 @@ void loop()
         Serial.println("Ο δημότης πεταξε τα σκουπίδια μέσα και το σύστημα πρέπει να τα ζυγίσει και να τα στείλει ");
       lc = 0;
     }
+
+    if ( (abs(accAngleX)<30.0 && abs(accAngleY)>60.0))   
     if (hasServo == true)
       lockByServo();
     
@@ -3561,8 +3588,7 @@ void loop()
     // if (step == 1)
     {
       //  if (LockStatus==1) lc=1;
-
-      //********  ΖΥΓΙΣΗ ΣΚΟΥΠΙΔΙΩΝ  **********
+      //*****************************  ΖΥΓΙΣΗ ΣΚΟΥΠΙΔΙΩΝ  *****************************
       {
         i = 0;
         while (we == 0 && i < 200)
@@ -3577,7 +3603,6 @@ void loop()
     }
     //*****************************   Κλείσε την ζυγαρία  ***********************************
     CloseScaleBin();
-
     //****************************    Έλεγχσς αν ο κάδος γέμισε  ****************************
     if (checkFullBin() && BinFull == 0)
     {
@@ -3597,8 +3622,7 @@ void loop()
       Datalist.add(s);
       gr++;
       storeGr();
-      store_Datalist(gr);
-      
+      store_Datalist(gr);     
       enablePost = 1;
     }
 
