@@ -153,7 +153,11 @@ enum _BinStatus
   Violation_Tilt
 
 };
-
+enum _BinOrientation
+{
+  Bin_Up,
+  Bin_Down
+}
 enum _parseState
 {
   PS_DETECT_MSG_TYPE,
@@ -174,6 +178,7 @@ byte pos;
 String httpContent = "";
 String result = "0";
 int binstatus = 0;
+int binOrientation=0;
 //OUTPUT
 #define DONE_PIN 18        //OUTPUT
 #define ALARM_PIN 13       //OUTPUT
@@ -2804,13 +2809,17 @@ void ReadAccelerometer()
   Serial.println("accAngleY:"   + String (accAngleY)); 
   Serial.println("accAngleX:" + String (accAngleX)); 
 
-    //***************************** ΑΠΟΚΟΜΙΔΗ IS ON ******************************
-    if ( (abs(accAngleX)>60.0 || abs(accAngleY)<30.0) )   
-      {
+}
+int violationTime=0;
+void ProceessAccelerometer()
+{
+
+  //***************************** ΑΠΟΚΟΜΙΔΗ IS ON ******************************
+  if ( binOrientation==Bin_Down)   
+   {
       // UnlockByServo();
       if (Garbagecollection==0)
       {
-        
         Garbagecollection=1;
         tagId="F9A8E904";
         Serial.println("*************** ΑΠΟΚΟΜΙΔΗ ΣΕ ΕΞΕΛΙΞΗ *******************"); 
@@ -2820,20 +2829,21 @@ void ReadAccelerometer()
         start_time = millis();
         beep(1);
       }
-      }
- 
-}
-int violationTime=0;
-void ProceessAccelerometer()
-{
+   }
   if ((abs(accAngleX)<60.0 && abs(accAngleY)>30.0))
-           violationTime=0;         
+         { 
+            violationTime=0;  
+            binOrientation=Bin_Up;   
+         }    
 
   //****************************   VIOLATION DETECT  ****************************
   if ( (abs(accAngleX)>60.0 || abs(accAngleY)<30.0)   &&  violationTime==0 )
+       {
+        binOrientation=Bin_Down;
         violationTime=millis();
+       } 
 
-   if ( (abs(accAngleX)>60.0 || abs(accAngleY)<20.0)  &&   (millis()-violationTime) > 60000  &&  violationTime>0 ) 
+   if (  binOrientation==Bin_Down  &&   (millis()-violationTime) > 120000  &&  violationTime>0 ) 
          {
                   if (!checkSamePlace())
                     prepare_Wifi_Gps_Data(Violation_Tilt);
@@ -2850,6 +2860,10 @@ void ProceessAccelerometer()
                       }
                       serializeJson(doc, s);
                       Serial.println(s);
+                      Datalist.add(s);
+                      gr++;
+                      storeGr();
+                      store_Datalist(gr);
                   } 
                   pinMode(GREEN_PIN, INPUT);
                   Serial.println("**** VIOLATION DETECTED ****");
@@ -3362,7 +3376,7 @@ void setup(void)
   Serial.println("********  ΠΑΤΕΡΑ ΣΕ ΕΥΧΑΡΙΣΤΩ ΠΟΛΥ ΓΙΑ ΟΤΙ ΕΧΩ ΚΑΤΑΦΕΡΕΙ ΧΑΡΗ ΣΕ ΕΣΕΝΑ ******");
   Serial.println("*******   ΜΗΤΕΡΑ ΣΕ ΕΥΧΑΡΙΣΤΩ ΠΟΛΥ ΠΟΥ ΜΕ ΜΕΓΑΛΩΣΕΣ ΓΕΡΟ ΚΑΙ ΔΥΝΑΤΟ  ********");
   Serial.println("+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++");
-  Serial.println("****************     STARTING   BINBOT SYSTEM  ver 5.0     ***************");
+  Serial.println("****************     STARTING   BINBOT SYSTEM  ver 6.0     ***************");
    
    
  }
@@ -3402,7 +3416,7 @@ void loop()
   ReadAccelerometer();
   ProceessAccelerometer();
    
-  if (mustUnlock == 1 && System_Tag == 0)
+  if (mustUnlock == 1)
   {
     unlock();
   }
@@ -3416,8 +3430,9 @@ void loop()
   }
 
    //δεν ανιχνευτηκε κάποιο Tag
-  if (millis() - start_time > 30000 && tagId == "")
+  if (millis() - start_time > 30000 && tagId == ""  && binOrientation==Bin_Up )
   {
+    CloseScaleBin();
     Working_time = millis() - Working_time;
     Serial.println("SYSTEM POWER OFF DUE NO TAG DETECTION");
     if (digitalRead(STATUSSCALE_PIN) == Locker_Opened)
@@ -3445,12 +3460,13 @@ void loop()
   // }
 
   //δεν ανοιξε ο κάδος λόγω προβλήματος ή  άλλου θέματος  
-  if (millis() - start_time > 40000 && System_Tag == 0)
+  if (millis() - start_time > 40000  && binOrientation==Bin_Up  )
   if (digitalRead(STATUSSCALE_PIN) == Locker_Closed && lc == 0 && tagId != "")
     {
       Working_time = millis() - Working_time;
       Serial.println("SYSTEM POWER OFF BECAUSE COVER NOT OPENED");
       lockByServo();
+      CloseScaleBin();
       mustUnlock = 0;
    if ( !checkSamePlace())
     {    
@@ -3477,8 +3493,8 @@ void loop()
       }
     }
 
-  if (LockStatus == 0 && digitalRead(STATUSSCALE_PIN) == Locker_Closed && System_Tag == 0)
-    AlarmOFF();
+  // if (LockStatus == 0 && digitalRead(STATUSSCALE_PIN) == Locker_Closed && System_Tag == 0)
+  //   AlarmOFF();
 
   //**************************************************************
   if (System_Tag == 1)
@@ -3515,19 +3531,19 @@ void loop()
     return;
   }
 
-  //δεν έκλεισε ο δημότης τον κάδο πάνω απο 40 δευτερόλεπτα
-  if (millis() - start_time > 80000)
-    if (digitalRead(STATUSSCALE_PIN) == Locker_Opened && Mainntanace == 0 && Garbagecollection == 0) //&& lc == 1
+  //δεν έκλεισε ο δημότης τον κάδο πάνω απο 90 δευτερόλεπτα ή κατα την αποκομιδή ο καθαριστής
+  if (millis() - start_time > 90000  && binOrientation==Bin_Up )
+    if (digitalRead(STATUSSCALE_PIN) == Locker_Opened && Mainntanace == 0 ) //&& lc == 1
     {
       Serial.println("Cover is opened too long");
       // if (millis() - start_time > 50000 && millis() - start_time < 60000)
 
-      if (millis() - start_time > 80000)
+     // if (millis() - start_time > 80000)
       {
         //beepDelay(1000);
 
         i = 0;
-        if (tagId != "")
+        if (tagId != "" &&  (Garbagecollection == 0))
           while (we == 0 && i < 200)
           {
 
@@ -3536,7 +3552,26 @@ void loop()
               break; //change
             i++;
           }
-        StaticJsonDocument<250> doc;
+         {
+          StaticJsonDocument<250> doc;
+          if (Garbagecollection == 1)
+          {
+                binstatus = Garbage_collection;
+              
+                doc["sst"] = binstatus;
+                doc["scd"] = DSN;
+                doc["dts"] = "timestamp";
+                doc["btr"] = batterylevel;
+                serializeJson(doc, s);
+                Serial.println(s);
+                Datalist.add(s);
+                gr++;
+                storeGr();
+                store_Datalist(gr);
+                enablePost = 1;
+                Garbagecollection = 0;
+          }
+        
         binstatus = ProblemCoverIsOpentoLong;
         doc["sst"] = binstatus;
         doc["scd"] = DSN;
@@ -3562,11 +3597,12 @@ void loop()
         ESP.restart();
       }
     }
+    }
 
   //*******************  O ΚΑΔΟΣ ΕΚΛΕΙΣΕ ΚΑΙ ΠΡΕΠΕΙ ΝΑ ΣΤΕΙΛΕΙ ΔΕΔΟΜΕΝΑ ********************
 
   //if (millis() - start_time > 4000)
-  if (digitalRead(STATUSSCALE_PIN) == Locker_Closed && lc == 1)
+  if (digitalRead(STATUSSCALE_PIN) == Locker_Closed && lc == 1 && binOrientation==Bin_Up )
   {
  
     if (lc == 1)
@@ -3574,11 +3610,11 @@ void loop()
       if (Garbagecollection == 1)
         Serial.println("H αποκομιδή τελείωσε και το καπάκι έκλεισε ");
       else
-        Serial.println("Ο δημότης πεταξε τα σκουπίδια μέσα και το σύστημα πρέπει να τα ζυγίσει και να τα στείλει ");
+        Serial.println("Ο δημότης πεταξε τα σκουπίδια μέσα και το σύστημα ua τα ζυγίσει και να τα στείλει ");
       lc = 0;
     }
 
-    if ( (abs(accAngleX)<30.0 && abs(accAngleY)>60.0))   
+   // if ( (abs(accAngleX)<30.0 && abs(accAngleY)>60.0))   
     if (hasServo == true)
       lockByServo();
     
@@ -3661,3 +3697,4 @@ void loop()
 
   //step=3;
 }
+
