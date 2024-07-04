@@ -157,7 +157,7 @@ enum _BinOrientation
 {
   Bin_Up,
   Bin_Down
-}
+};
 enum _parseState
 {
   PS_DETECT_MSG_TYPE,
@@ -250,7 +250,7 @@ long working_period = millis();
 long nfc_period = millis();
 float batterylevel, voltage;
 String APs="",APs_="";
-int mVperAmp = 270;           // this the 5A version of the ACS712 -use 100 for 20A Module and 66 for 30A Module
+int mVperAmp = 195;           // this the 5A version of the ACS712 -use 100 for 20A Module and 66 for 30A Module
 double Watt = 0;
 double TotalWatt = 0;
 double Voltage = 0;
@@ -362,10 +362,13 @@ void restore_Tags()
 int pos1 = 0;
 void lockByServo()
 {
+ // myservo.attach(SERVO_PIN); 
   Serial.println("locking");
-  delay(1000);
-  if (digitalRead(STATUSSCALE_PIN) == Locker_Closed)
-    myservo.write(100);
+ //if (digitalRead(STATUSSCALE_PIN) == Locker_Closed)
+    myservo.write(90);
+  // delay(1000);
+  // myservo.detach();
+   
 
   // for (pos1 = 0; pos1 <= 180; pos1 += 1) { // goes from 0 degrees to 180 degrees
   //   // in steps of 1 degree
@@ -389,10 +392,18 @@ void beepDelay(int period = 1000)
 }
 void UnlockByServo()
 {
-  Serial.println("Unlocking");
-  myservo.write(0);
+  //myservo.attach(SERVO_PIN); 
+  //delay(1000);
+  
+ 
   if (ultime == 0)
+  {
+    Serial.println("Unlocking");
     beepDelay(500);
+    myservo.write(0);
+  }
+    
+   // myservo.detach(); 
   ultime++;
   if (ultime == 100000) //test
   {
@@ -1796,10 +1807,10 @@ boolean checkWeight()
 {
   cn = 0;
   weight = 0;
-  if (WeightList.size() >= 100)
+  if (WeightList.size() >= 50)
   {
     Serial.println("weight size" + String(WeightList.size()));
-    for (int i = 49; i < 100; i++)
+    for (int i = 25; i < 50; i++)
     {
       // Serial.println("weight list" + String(i));
       // if (WeightList.get(WeightList.size() - 1) == WeightList.get(i))
@@ -1846,7 +1857,7 @@ String readscale()
     str.replace("wn", "");
     weight = str.toDouble();
     WeightList.add(weight);
-    if (WeightList.size() > 100)
+    if (WeightList.size() > 50)
       WeightList.remove(0);
     Serial.println("Weight:" + str);
   }
@@ -2136,67 +2147,18 @@ boolean checkFullBin()
 
 void unlock()
 {
-
+   UnlockByServo(); 
   if (digitalRead(STATUSSCALE_PIN) == Locker_Closed) //&& LockStatus ==0
   {
-    // for (int i = 0; i < 90; i++)
-    // {
-    //   delay(100);
-    //   if ((millis() - start_time) > 7000)
-    //   break;
-    // }
-
-    if (hasServo == false)
-    {
-      //trigger locker to unlock
-      pinMode(LOCKER_PIN, OUTPUT);
-      digitalWrite(LOCKER_PIN, HIGH);
-
-      scaleIsConnected = 0;
-      ultime++;
-      if (ultime < 10)
-        beep(1);
-      else
-      {
-        delay(1000);
-      }
-      pinMode(LOCKER_PIN, INPUT);
-      //delay(1000);
-
-      //readscale();
-      if (ultime == 30) //test
-      {
-        StaticJsonDocument<250> doc;
-        binstatus = ProblemCoverNotOpening;
-        doc["sst"] = binstatus;
-        doc["scd"] = DSN;
-        doc["dts"] = "timestamp";
-        doc["btr"] = batterylevel;
-        serializeJson(doc, s);
-        Serial.println(s);
-        Datalist.add(s);
-        gr++;
-        storeGr();
-        store_Datalist(gr);
-        enablePost = 1;
-        transmit_data();
-        working_period = 0;
-        done();
-      }
-    }
-    else
-      UnlockByServo();
-
+   
+      
+  
     //if (eTaskGetState(&Task1)==2)
   }
   //bin is opened
   if (digitalRead(STATUSSCALE_PIN) == Locker_Opened)
   {
-
     pinMode(LOCKER_PIN, INPUT);
-    if (ultime == 0)
-      beepDelay(250);
-    ultime = 0;
     Serial.println("Bin is opened by the citizen");
     //if (scaleIsConnected == 0 && Garbagecollection == 0) // open scale if citizen is here
     // openScaleBin();
@@ -2569,11 +2531,11 @@ void checkVersion()
 
     case HTTP_UPDATE_OK:
       Serial.println("HTTP_UPDATE_OK");
-      beepDelay(1000);
-      if (digitalRead(STATUSSCALE_PIN) == Locker_Closed)
-        lockByServo();
-      Mainntanace = 0;
-      ESP.restart();
+      // beepDelay(1000);
+      // if (digitalRead(STATUSSCALE_PIN) == Locker_Closed)
+      //   lockByServo();
+      // Mainntanace = 0;
+      // ESP.restart();
       break;
     }
   }
@@ -2813,6 +2775,17 @@ void ReadAccelerometer()
 int violationTime=0;
 void ProceessAccelerometer()
 {
+  if ((abs(accAngleX)<60.0 && abs(accAngleY)>30.0))
+         { 
+            violationTime=0;  
+            binOrientation=Bin_Up;   
+         } 
+
+    if ( (abs(accAngleX)>60.0 || abs(accAngleY)<30.0)   &&  violationTime==0 )
+       {
+        binOrientation=Bin_Down;
+        violationTime=millis();
+       } 
 
   //***************************** ΑΠΟΚΟΜΙΔΗ IS ON ******************************
   if ( binOrientation==Bin_Down)   
@@ -2830,18 +2803,9 @@ void ProceessAccelerometer()
         beep(1);
       }
    }
-  if ((abs(accAngleX)<60.0 && abs(accAngleY)>30.0))
-         { 
-            violationTime=0;  
-            binOrientation=Bin_Up;   
-         }    
+    
 
   //****************************   VIOLATION DETECT  ****************************
-  if ( (abs(accAngleX)>60.0 || abs(accAngleY)<30.0)   &&  violationTime==0 )
-       {
-        binOrientation=Bin_Down;
-        violationTime=millis();
-       } 
 
    if (  binOrientation==Bin_Down  &&   (millis()-violationTime) > 120000  &&  violationTime>0 ) 
          {
@@ -2995,7 +2959,6 @@ void test()
   transmit_data();
 
   Serial.println(("SENSOR1 " + String(digitalRead(SENSOR1))));
-
   Serial.println(("SENSOR2 " + String(digitalRead(SENSOR2))));
   Serial.println(("OpenScale " + String(digitalRead(STATUSSCALE_PIN))));
   //readNFC();
@@ -3377,7 +3340,17 @@ void setup(void)
   Serial.println("*******   ΜΗΤΕΡΑ ΣΕ ΕΥΧΑΡΙΣΤΩ ΠΟΛΥ ΠΟΥ ΜΕ ΜΕΓΑΛΩΣΕΣ ΓΕΡΟ ΚΑΙ ΔΥΝΑΤΟ  ********");
   Serial.println("+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++");
   Serial.println("****************     STARTING   BINBOT SYSTEM  ver 6.0     ***************");
-   
+  
+
+    // CloseScaleBin();
+    // while (1==1)
+    // {
+    //   UnlockByServo();
+    //   delay(10000);
+    //   lockByServo();
+    //   delay(10000);
+      
+    // }
    
  }
 boolean readTaglist()
@@ -3544,7 +3517,7 @@ void loop()
 
         i = 0;
         if (tagId != "" &&  (Garbagecollection == 0))
-          while (we == 0 && i < 200)
+          while (we == 0 && i < 100)
           {
 
             readscale();
@@ -3601,7 +3574,7 @@ void loop()
 
   //*******************  O ΚΑΔΟΣ ΕΚΛΕΙΣΕ ΚΑΙ ΠΡΕΠΕΙ ΝΑ ΣΤΕΙΛΕΙ ΔΕΔΟΜΕΝΑ ********************
 
-  //if (millis() - start_time > 4000)
+  if ((millis() - start_time > 30000   && Garbagecollection == 1) || (millis() - start_time > 1000   && Garbagecollection == 0))
   if (digitalRead(STATUSSCALE_PIN) == Locker_Closed && lc == 1 && binOrientation==Bin_Up )
   {
  
@@ -3615,9 +3588,8 @@ void loop()
     }
 
    // if ( (abs(accAngleX)<30.0 && abs(accAngleY)>60.0))   
-    if (hasServo == true)
-      lockByServo();
-    
+   if  (hasServo == true)
+    lockByServo();
 
     //******************* Ο δημότης πεταξε τα σκουπιδια μέσα και το σύστημα πρέπει να τα ζυγίσει και να τα στείλει *************
     if (Garbagecollection == 0)
@@ -3627,7 +3599,7 @@ void loop()
       //*****************************  ΖΥΓΙΣΗ ΣΚΟΥΠΙΔΙΩΝ  *****************************
       {
         i = 0;
-        while (we == 0 && i < 200)
+        while (we == 0 && i < 100)
         {
 
           readscale();
@@ -3638,7 +3610,7 @@ void loop()
       }
     }
     //*****************************   Κλείσε την ζυγαρία  ***********************************
-    CloseScaleBin();
+    CloseScaleBin();  
     //****************************    Έλεγχσς αν ο κάδος γέμισε  ****************************
     if (checkFullBin() && BinFull == 0)
     {
