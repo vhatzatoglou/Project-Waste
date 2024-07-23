@@ -365,7 +365,7 @@ void lockByServo()
  // myservo.attach(SERVO_PIN); 
   Serial.println("locking");
  //if (digitalRead(STATUSSCALE_PIN) == Locker_Closed)
-    myservo.write(90);
+    myservo.write(80);
   // delay(1000);
   // myservo.detach();
    
