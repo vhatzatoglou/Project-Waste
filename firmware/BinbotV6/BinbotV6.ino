@@ -654,7 +654,7 @@ void modem_on()
     delay(3000);
     bool isConnected = false;
     int tryCount = 60;
-    while (tryCount--)
+    while (tryCount>0)
     {
       int16_t signal = modem.getSignalQuality();
       Serial.print("Signal: ");
@@ -663,10 +663,12 @@ void modem_on()
       Serial.print("isNetworkConnected: ");
       isConnected = modem.isNetworkConnected();
       Serial.println(isConnected ? "CONNECT" : "NO CONNECT");
+        Serial.println("tryCount" +  String(tryCount));
       if (isConnected)
       {
         break;
       }
+       tryCount--;
       delay(1000);
       digitalWrite(LED_PIN, !digitalRead(LED_PIN));
     }
@@ -678,8 +680,7 @@ void modem_on()
   digitalWrite(LED_PIN, LOW);
 
   Serial.println();
-  Serial.println("Device is connected .");
-  Serial.println();
+ 
 
   Serial.println("=====Inquiring UE system information=====");
   modem.sendAT("+CPSI?");
@@ -2130,14 +2131,14 @@ boolean checkFullBin()
 {
   Serial.println("**** CheckFullBin ****");
   if (digitalRead(SENSOR1) == 0)
-    Serial.println("SENSOR1 ΑΔΕΙΟΣ");
+    Serial.println("SENSOR1 EMPTY");
   else
-    Serial.println("SENSOR1 ΓΕΜΑΤΟΣ");
+    Serial.println("SENSOR1 FULL");
 
   if (digitalRead(SENSOR2) == 0)
-    Serial.println("SENSOR2 ΑΔΕΙΟΣ");
+    Serial.println("SENSOR2 EMPTY");
   else
-    Serial.println("SENSOR2 ΓΕΜΑΤΟΣ");
+    Serial.println("SENSOR2 FULL");
 
   if (digitalRead(SENSOR1) == 1 && digitalRead(SENSOR2) == 1)
     return true;
@@ -2159,6 +2160,7 @@ void unlock()
   if (digitalRead(STATUSSCALE_PIN) == Locker_Opened)
   {
     pinMode(LOCKER_PIN, INPUT);
+    if ( Garbagecollection == 0) 
     Serial.println("Bin is opened by the citizen");
     //if (scaleIsConnected == 0 && Garbagecollection == 0) // open scale if citizen is here
     // openScaleBin();
@@ -2312,6 +2314,7 @@ void CheckNFC()
             CloseScaleBin();
             Green();
             unlock();
+            Serial.println("Bin is self unlocked");
             start_time = millis();
             beep(2);
             return;
@@ -2440,13 +2443,15 @@ void transmit_data()
     // SerialAT.begin(115200, SERIAL_8N1, PIN_RX, PIN_TX); //Modem port
 
     modem_on();
+    if (modem.isGprsConnected())
     getRTC();
     int r;
     File f;
     Working_time_posting = millis();
     delay(5000);
     SPIFFS.begin();
-
+    if (modem.isGprsConnected())
+    {
     for (int i1 = 0; i1 < 80; i1++)
     {
       if (SPIFFS.exists("/Datalist_" + String(i1)))
@@ -2480,8 +2485,10 @@ void transmit_data()
         f.close();
       }
     }
+    
     gr = -1;
     storeGr();
+  }
     modemPowerOff();
 
     Working_time_posting = millis() - Working_time_posting;
@@ -2742,6 +2749,8 @@ void Read_GPS_LatLon()
 {
   
     modem_on();
+    if (modem.isGprsConnected())
+    {
     getRTC();
     enableGPS(); 
     Serial.println("Start positioning . Make sure to locate outdoors.");
@@ -2760,31 +2769,37 @@ void Read_GPS_LatLon()
     }
 
     disableGPS();
+    }
 }
+long acc_time=0;
 void ReadAccelerometer()
 {
    // read raw accel/gyro measurements from device
-  accelgyro.getMotion6(&ax, &ay, &az, &gx, &gy, &gz);
- 
-  accAngleX = (atan(ay / sqrt(pow(ax, 2) + pow(az, 2))) * 180 / PI) - 0.58; // AccErrorX ~(0.58) See the calculate_IMU_error()custom function for more details
-  accAngleY = (atan(-1 * ax / sqrt(pow(ay, 2) + pow(az, 2))) * 180 / PI) + 1.58; // AccErrorY ~(-1.58)
-  Serial.println("accAngleY:"   + String (accAngleY)); 
-  Serial.println("accAngleX:" + String (accAngleX)); 
-
+ accelgyro.getMotion6(&ax, &ay, &az, &gx, &gy, &gz);
+ accAngleX = (atan(ay / sqrt(pow(ax, 2) + pow(az, 2))) * 180 / PI) - 0.58; // AccErrorX ~(0.58) See the calculate_IMU_error()custom function for more details
+ accAngleY = (atan(-1 * ax / sqrt(pow(ay, 2) + pow(az, 2))) * 180 / PI) + 1.58; // AccErrorY ~(-1.58)
+ while (millis() - acc_time >1000 )
+  {
+    acc_time=millis();
+    Serial.println("accAngleY:"   + String (accAngleY)); 
+    Serial.println("accAngleX:" + String (accAngleX)); 
+  }
+  
 }
 int violationTime=0;
 void ProceessAccelerometer()
 {
-  if ((abs(accAngleX)<60.0 && abs(accAngleY)>30.0))
+  if (abs(accAngleX)<60.0  &&  violationTime==0  )
          { 
-            violationTime=0;  
-            binOrientation=Bin_Up;   
+           // violationTime=0;  
+            binOrientation=Bin_Down;  
+            violationTime=millis(); 
          } 
 
-    if ( (abs(accAngleX)>60.0 || abs(accAngleY)<30.0)   &&  violationTime==0 )
+    if ( (abs(accAngleX)>60.0)  )
        {
-        binOrientation=Bin_Down;
-        violationTime=millis();
+        binOrientation=Bin_Up;
+        violationTime=0;
        } 
 
   //***************************** ΑΠΟΚΟΜΙΔΗ IS ON ******************************
@@ -2795,7 +2810,7 @@ void ProceessAccelerometer()
       {
         Garbagecollection=1;
         tagId="F9A8E904";
-        Serial.println("*************** ΑΠΟΚΟΜΙΔΗ ΣΕ ΕΞΕΛΙΞΗ *******************"); 
+        Serial.println("*************** GARBAGE COLLECTION IN PROGRESS *******************"); 
         mustUnlock = 1;
         CloseScaleBin();
         unlock();
@@ -2815,7 +2830,7 @@ void ProceessAccelerometer()
                   {
                       StaticJsonDocument<250> doc;
                       doc["b_c"]=DSN;
-                      doc["b_s"]=Violation_Tilt;
+                      doc["b_s"]=16;
                       doc["dts"]="timestamp";
                       if (lat>0)
                       {
@@ -3192,6 +3207,7 @@ boolean checkSamePlace()
 }
 void setup(void)
 {
+   
   //******* Open Scale to calibrate  **********
   
   Serial1.begin(9600, SERIAL_8N1, RXSCALE_PIN, TXSCALE_PIN, TXSCALE_PIN); //Scale port
@@ -3200,7 +3216,7 @@ void setup(void)
  // openWifi();
    
   //********************************************
-
+  
   Working_time = millis();
   pinMode(DONE_PIN, OUTPUT);
   digitalWrite(DONE_PIN, LOW);
@@ -3213,7 +3229,7 @@ void setup(void)
                              // using default min/max of 1000us and 2000us
                              // different servos may require different min/max settings
                              // for an accurate 0 to 180 sweep
-  Serial.begin(115200);
+ 
   SetAccelerometer();
   nfc.begin();
   getSettings();
@@ -3226,7 +3242,7 @@ void setup(void)
       &Task1,     /* Task handle to keep track of created task */
       0);         /* pin task to core 0 */
  
-  
+  Serial.begin(115200);
   while (millis() - start_time < 30000 && tagId == "" && Garbagecollection==0)
   {
     Serial.println("NFC Reader Start reading...");
@@ -3264,10 +3280,10 @@ void setup(void)
   CheckNFC();
   checkFormat();
 
-  // File f = SPIFFS.open("/Serial", "r");
-  // if (!f.available())
-  //initialize_Scale("bin_scale_test");
-  // f.close();
+  //  File f = SPIFFS.open("/Serial", "r");          
+  //  if (!f.available())
+  //  initialize_Scale("bin_scale_test");
+  //  f.close();
   
   getSerial();
   
@@ -3652,7 +3668,7 @@ void loop()
       storeGr();
       store_Datalist(gr);
       enablePost = 1;
-      Garbagecollection = 0;
+     // Garbagecollection = 0;
     }
     //*******************************************************************************************************************************'
    if ( !checkSamePlace() )
