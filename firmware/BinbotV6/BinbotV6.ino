@@ -2208,7 +2208,7 @@ boolean checkTags()
       {
         // beep(2);
         Garbagecollection = 1;
-        Serial.println("Tag Αποκομιδής άδειασμα κάδου");
+        Serial.println("Tag Apokomids adeiasma kadou");
         break;
       }
       if (Taglist.get(i)->type == MaintenanceTag) // Tag Συντήρησης
@@ -3350,12 +3350,12 @@ void setup(void)
   getSettings();
   
 
-  Serial.println("++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++");
-  Serial.println("**  ΑΦΙΕΡΩΜΕΝΟ ΣΤΗΝ ΜΝΗΜΗ ΤΟΥ ΠΑΤΕΡΑ ΜΟΥ  ΠΡΟΔΡΟΜΟΥ & ΤΗΣ ΜΗΤΕΡΑ ΜΟΥ ΝΙΚΗΣ **");
-  Serial.println("********  ΠΑΤΕΡΑ ΣΕ ΕΥΧΑΡΙΣΤΩ ΠΟΛΥ ΓΙΑ ΟΤΙ ΕΧΩ ΚΑΤΑΦΕΡΕΙ ΧΑΡΗ ΣΕ ΕΣΕΝΑ ******");
-  Serial.println("*******   ΜΗΤΕΡΑ ΣΕ ΕΥΧΑΡΙΣΤΩ ΠΟΛΥ ΠΟΥ ΜΕ ΜΕΓΑΛΩΣΕΣ ΓΕΡΟ ΚΑΙ ΔΥΝΑΤΟ  ********");
-  Serial.println("+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++");
-  Serial.println("****************     STARTING   BINBOT SYSTEM  ver 6.0     ***************");
+  // Serial.println("++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++");
+    Serial.println("**  DEDICATED TO THE MEMORY OF MY FATHER PRODROMO AND MY MOTHER NIKI**");
+  // Serial.println("********  ΠΑΤΕΡΑ ΣΕ ΕΥΧΑΡΙΣΤΩ ΠΟΛΥ ΓΙΑ ΟΤΙ ΕΧΩ ΚΑΤΑΦΕΡΕΙ ΧΑΡΗ ΣΕ ΕΣΕΝΑ ******");
+  // Serial.println("*******   ΜΗΤΕΡΑ ΣΕ ΕΥΧΑΡΙΣΤΩ ΠΟΛΥ ΠΟΥ ΜΕ ΜΕΓΑΛΩΣΕΣ ΓΕΡΟ ΚΑΙ ΔΥΝΑΤΟ  ********");
+  // Serial.println("+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++");
+     Serial.println("****************     STARTING   BINBOT SYSTEM  ver 6.0     ***************");
   
 
     // CloseScaleBin();
@@ -3396,6 +3396,9 @@ void ScaleCal()
           Serial.println("Weight Offset --> " + String(weightA));
         }
       }
+
+
+        
 }
 void loop()
 {
@@ -3597,9 +3600,9 @@ void loop()
     if (lc == 1)
     {
       if (Garbagecollection == 1)
-        Serial.println("H αποκομιδή τελείωσε και το καπάκι έκλεισε ");
+        Serial.println("ΗH apokomidi teleeiose kai to kapaki ekleies");
       else
-        Serial.println("Ο δημότης πεταξε τα σκουπίδια μέσα και το σύστημα ua τα ζυγίσει και να τα στείλει ");
+        Serial.println("The citizen trow his garbage inside  and the binbot will weight it now  ");
       lc = 0;
     }
 
