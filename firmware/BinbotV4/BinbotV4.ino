@@ -67,6 +67,7 @@ float Working_time_connecting = 0;
 float Working_time_posting = 0;
 float mAh = 0.0;
 int chgTimes = 0;
+int wa = 0;
 int chgTimesNew = 2;
 int p, DAY1, MONTH_, YEAR_, YEAR1, Seconds_, Hours_, Minutes_, hourOfDay, DAY_OF_WEEK, hasModemSIM, contentLength;
 boolean GPRS_on;
@@ -486,7 +487,7 @@ void modem_on()
     modem.simUnlock(GSM_PIN);
   }
 
-  for (int i = 0; i <= 4; i++)
+ for (int i = 0; i < 2; i++)
   {
     uint8_t network[] = {
         2,  /*Automatic*/
@@ -499,7 +500,7 @@ void modem_on()
     delay(3000);
     bool isConnected = false;
     int tryCount = 60;
-    while (tryCount--)
+    while (tryCount>0)
     {
       int16_t signal = modem.getSignalQuality();
       Serial.print("Signal: ");
@@ -508,10 +509,12 @@ void modem_on()
       Serial.print("isNetworkConnected: ");
       isConnected = modem.isNetworkConnected();
       Serial.println(isConnected ? "CONNECT" : "NO CONNECT");
+        Serial.println("tryCount" +  String(tryCount));
       if (isConnected)
       {
         break;
       }
+       tryCount--;
       delay(1000);
       digitalWrite(LED_PIN, !digitalRead(LED_PIN));
     }
@@ -968,6 +971,14 @@ void blinkGreen(void *pvParameters)
   for (;;)
   {
     vTaskDelay(100);
+    {
+      if  (millis() - start_time > 4000  && wa < 5)
+      {
+       readscale1();
+      }
+     
+    }
+
     if (digitalRead(STATUSSCALE_PIN) == Locker_Closed && mustUnlock == 0)
     {
       if (we == 1)
@@ -1709,7 +1720,7 @@ void readscale1()
 {
   String str;
   scaleIsConnected = 0;
-  delay(100);
+  //delay(100);
   while (Serial1.available())
   {
 
@@ -1725,7 +1736,8 @@ void readscale1()
     if (weight == weight)
     {
       WeightList.add(weight);
-      a++;
+      wa++;
+      Serial.println("A:" + String(wa));
     }
     if (WeightList.size() > 10)
       WeightList.remove(0);
@@ -2815,7 +2827,7 @@ void setup(void)
       0);         /* pin task to core 0 */
   
   nfc.begin();
-  while (millis() - start_time < 20000 && tagId == "")
+  while (millis() - start_time < 30000 && tagId == "")
   {
     Serial.println("NFC Reader Start reading...");
     //if ( digitalRead(STATUSSCALE_PIN) == Locker_Closed)
@@ -2884,42 +2896,7 @@ void setup(void)
   {
     // CloseScaleBin();
   }
-  // //****************************    Έλεγχσς αν ο κάδος γέμισε  ****************************
-  //  if (checkFullBin()  ) //&& BinFull==0
-  //         {
-
-  //           pinMode(GREEN_PIN, INPUT);
-  //           Serial.println("**** Bin Is Full ****");
-  //           //BEEP 2 TIMES TO INDICATE BIN IS FULL
-  //           beep(6);
-  //           StaticJsonDocument<250> doc;
-  //           binstatus = BinIsFull;
-  //           doc["sst"] = binstatus;
-  //           doc["scd"] = DSN;
-  //           doc["dts"] = "timestamp";
-  //           doc["btr"] = batterylevel;
-  //           serializeJson(doc, s);
-  //           Serial.println(s);
-  //           Datalist.add(s);
-  //           gr++;
-  //           storeGr();
-  //           BinFull=1;
-  //           store_Datalist(gr);
-  //           enablePost=1;
-  //           transmit_data();
-  //           storeSettings();
-  //           done();
-  //           return;
-  //         }
-
-  //*******************ΕΛΕΓΧΟΣ ΓΙΑ ΠΑΡΑΒΙΑΣΗ ********************
-  // if (LockStatus ==0 && digitalRead(STATUSSCALE_PIN) == Locker_Opened )
-  // for (int i = 0; i <1; i++)
-  //   {
-  //     AlarmOn();
-  //     delay(1000);
-  //     return;
-  //   }
+  
 
   if (digitalRead(STATUSSCALE_PIN) == Locker_Opened)
     Serial.println("Cover is opened");
@@ -2930,25 +2907,25 @@ void setup(void)
 
   a = 0;
   //calibrate only if the cover is closed
-  if (digitalRead(STATUSSCALE_PIN) == Locker_Closed)
-  {
-    while (millis() - start_time > 2000 && a < 10)
-    {
-      readscale1();
-    }
-    {
-      Serial.println("weightA size" + String(WeightList.size()));
-      for (int i = 0; i < WeightList.size(); i++)
-      {
-        weightA = weightA + WeightList.get(i);
-      }
-      {
-        weightA = weightA / WeightList.size();
-        WeightList.clear();
-        Serial.println("weight Initialized -->" + String(weightA));
-      }
-    }
-  }
+  // if (digitalRead(STATUSSCALE_PIN) == Locker_Closed)
+  // {
+  //   while (millis() - start_time > 2000 && a < 10)
+  //   {
+  //     readscale1();
+  //   }
+  //   {
+  //     Serial.println("weightA size" + String(WeightList.size()));
+  //     for (int i = 0; i < WeightList.size(); i++)
+  //     {
+  //       weightA = weightA + WeightList.get(i);
+  //     }
+  //     {
+  //       weightA = weightA / WeightList.size();
+  //       WeightList.clear();
+  //       Serial.println("weight Initialized -->" + String(weightA));
+  //     }
+  //   }
+  // }
 
   //start_time=millis();
   //test();
@@ -2956,13 +2933,14 @@ void setup(void)
   // Serial.println(("SENSOR2 " + String(digitalRead(SENSOR2))));
   getSettings();
 
-  Serial.println("++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++");
-  Serial.println("**  ΑΦΙΕΡΩΜΕΝΟ ΣΤΗΝ ΜΝΗΜΗ ΤΟΥ ΠΑΤΕΡΑ ΜΟΥ  ΠΡΟΔΡΟΜΟΥ & ΤΗΣ ΜΗΤΕΡΑ ΜΟΥ ΝΙΚΗΣ **");
-  Serial.println("********  ΠΑΤΕΡΑ ΣΕ ΕΥΧΑΡΙΣΤΩ ΠΟΛΥ ΓΙΑ ΟΤΙ ΕΧΩ ΚΑΤΑΦΕΡΕΙ ΧΑΡΗ ΣΕ ΕΣΕΝΑ ******");
-  Serial.println("*******   ΜΗΤΕΡΑ ΣΕ ΕΥΧΑΡΙΣΤΩ ΠΟΛΥ ΠΟΥ ΜΕ ΜΕΓΑΛΩΣΕΣ ΓΕΡΟ ΚΑΙ ΔΥΝΑΤΟ  ********");
-  Serial.println("+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++");
+  // Serial.println("++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++");
+     Serial.println("**  DEDICATED TO THE MEMORY OF MY FATHER PRODROMO AND MY MOTHER NIKI**");
+     Serial.println("********                     REST IN PEACE                      ******");
+  // Serial.println("*******   ΜΗΤΕΡΑ ΣΕ ΕΥΧΑΡΙΣΤΩ ΠΟΛΥ ΠΟΥ ΜΕ ΜΕΓΑΛΩΣΕΣ ΓΕΡΟ ΚΑΙ ΔΥΝΑΤΟ  ********");
+  // Serial.println("+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++");
+ 
 
-  Serial.println("****************     STARTING   BINBOT SYSTEM  ver 4.0     ***************");
+  Serial.println("****************     STARTING   BINBOT SYSTEM  ver 4.000    ***************");
 }
 boolean readTaglist()
 {
@@ -2974,8 +2952,31 @@ boolean readTaglist()
   return false;
 }
 int counter;
+void ScaleCal()
+{
+      if (wa >= 5 and wa<20) 
+      {
+        wa=20;
+        
+      //  Serial.println("weightA size" + String(WeightList.size()));
+        for (int i = 0; i < WeightList.size(); i++)
+        {
+          weightA = weightA + WeightList.get(i);
+        }
+        {
+          weightA = weightA / WeightList.size();
+          WeightList.clear();
+          Serial.println("Weight Offset --> " + String(weightA));
+        }
+      }
+
+
+        
+}
+
 void loop()
 {
+  ScaleCal();
   if (stopWorking == 1)
     return;
   // checkFullBin();
