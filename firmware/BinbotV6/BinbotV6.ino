@@ -122,6 +122,12 @@ enum _LockerStatus
   Locker_Closed
 
 };
+enum _LockerStatusN
+{
+  Locker_Closed,
+  Locker_Opened
+
+};
 enum _tagType
 {
   SystemTag,
@@ -256,7 +262,7 @@ double TotalWatt = 0;
 double Voltage = 0;
 double VRMS = 0;
 double AmpsRMS = 0;
-
+int NewVersion=0;
 void store_Tag(int type, String Id)
 {
 
@@ -641,7 +647,7 @@ void modem_on()
     modem.simUnlock(GSM_PIN);
   }
 
-  for (int i = 0; i <= 4; i++)
+  for (int i = 0; i < 2; i++)
   {
     uint8_t network[] = {
         2,  /*Automatic*/
@@ -1128,15 +1134,14 @@ void blinkGreen(void *pvParameters)
 
    //calibrate Scale
  // if (digitalRead(STATUSSCALE_PIN) == Locker_Closed )
+    
     {
-      if  (millis() - start_time > 4000 && wa < 5)
+      if  (millis() - start_time > 4000  && wa < 5)
       {
-        readscale1();
+       readscale1();
       }
      
     }
-
-   
     
     if (digitalRead(STATUSSCALE_PIN) == Locker_Closed && mustUnlock == 0)
     {
@@ -2452,7 +2457,7 @@ void transmit_data()
     SPIFFS.begin();
     if (modem.isGprsConnected())
     {
-    for (int i1 = 0; i1 < 80; i1++)
+    for (int i1 = 0; i1 <=(gr); i1++)
     {
       if (SPIFFS.exists("/Datalist_" + String(i1)))
       {
@@ -2742,6 +2747,10 @@ void SetAccelerometer()
     // verify connection
     Serial.println("Testing device connections...");
     Serial.println(accelgyro.testConnection() ? "MPU6050 connection successful" : "MPU6050 connection failed");
+    if (accelgyro.testConnection())
+    {
+      NewVersion=1;
+    }
 
 }
 
@@ -2774,6 +2783,7 @@ void Read_GPS_LatLon()
 long acc_time=0;
 void ReadAccelerometer()
 {
+  if (NewVersion==0) return;
    // read raw accel/gyro measurements from device
  accelgyro.getMotion6(&ax, &ay, &az, &gx, &gy, &gz);
  accAngleX = (atan(ay / sqrt(pow(ax, 2) + pow(az, 2))) * 180 / PI) - 0.58; // AccErrorX ~(0.58) See the calculate_IMU_error()custom function for more details
@@ -2789,6 +2799,7 @@ void ReadAccelerometer()
 int violationTime=0;
 void ProceessAccelerometer()
 {
+  if (NewVersion==0) return;
   if (abs(accAngleX)<60.0  &&  violationTime==0  )
          { 
            // violationTime=0;  
@@ -3116,6 +3127,46 @@ boolean scanWifi(String s="")
 
     // Print unsorted scan results
     for (int8_t i = 0; i < scanResult; i++) {
+
+  
+    if (ssid="BinBot")  
+    {
+       Mainntanace=1;
+      {
+
+            Serial.print("Maintenance is on. Wifi commection");
+            WiFi.mode(WIFI_STA);
+            //openwifi binbot; download firmware
+          // WiFi.begin("Safebot", "s@f3b0t1");
+             WiFi.begin("BinBot", "B1^80T");
+            int tries = 0;
+
+            delay(5000);
+            while (WiFi.status() != WL_CONNECTED && tries < 60)
+            {
+              Serial.print('.');
+              tries++;
+              delay(1000);
+            }
+
+            if (WiFi.status() == WL_CONNECTED)
+            {
+              Mainntanace = 0;
+              checkVersion();
+            }
+            else
+            {
+              mAh = 0;
+              storeSettings();
+            }
+
+            Mainntanace = 0;
+            return false;
+          }
+
+    }
+    
+
     if (i >5) break;
       WiFi.getNetworkInfo(i, ssid, encryptionType, rssi, bssid, channel);
 
@@ -3351,12 +3402,14 @@ void setup(void)
   
 
   // Serial.println("++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++");
-    Serial.println("**  DEDICATED TO THE MEMORY OF MY FATHER PRODROMO AND MY MOTHER NIKI**");
-  // Serial.println("********  ΠΑΤΕΡΑ ΣΕ ΕΥΧΑΡΙΣΤΩ ΠΟΛΥ ΓΙΑ ΟΤΙ ΕΧΩ ΚΑΤΑΦΕΡΕΙ ΧΑΡΗ ΣΕ ΕΣΕΝΑ ******");
+     Serial.println("**  DEDICATED TO THE MEMORY OF MY FATHER PRODROMO AND MY MOTHER NIKI**");
+     Serial.println("********                     REST IN PEACE                      ******");
   // Serial.println("*******   ΜΗΤΕΡΑ ΣΕ ΕΥΧΑΡΙΣΤΩ ΠΟΛΥ ΠΟΥ ΜΕ ΜΕΓΑΛΩΣΕΣ ΓΕΡΟ ΚΑΙ ΔΥΝΑΤΟ  ********");
   // Serial.println("+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++");
-     Serial.println("****************     STARTING   BINBOT SYSTEM  ver 6.0     ***************");
+     Serial.println("****************   STARTING   BINBOT SYSTEM  ver 6.0    ***************");
   
+  //  prepare_Wifi_Gps_Data(NewLocationDetected);
+  //  transmit_data();
 
     // CloseScaleBin();
     // while (1==1)
@@ -3400,6 +3453,7 @@ void ScaleCal()
 
         
 }
+
 void loop()
 {
    ScaleCal();
@@ -3497,7 +3551,8 @@ void loop()
     Serial.print("Maintenance is on. Wifi commection");
     WiFi.mode(WIFI_STA);
     //openwifi binbot; download firmware
-    WiFi.begin("Safebot", "s@f3b0t1");
+     WiFi.begin("BinBot", "B1^80T");
+   // WiFi.begin("Safebot", "s@f3b0t1");
     int tries = 0;
 
     delay(5000);
