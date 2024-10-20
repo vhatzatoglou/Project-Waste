@@ -307,7 +307,7 @@ void lockByServo()
   Serial.println("locking");
   delay(1000);
   if (digitalRead(STATUSSCALE_PIN) == Locker_Closed)
-    myservo.write(100);
+    myservo.write(80);
 
   // for (pos1 = 0; pos1 <= 180; pos1 += 1) { // goes from 0 degrees to 180 degrees
   //   // in steps of 1 degree
@@ -332,7 +332,7 @@ void beepDelay(int period = 1000)
 void UnlockByServo()
 {
   Serial.println("Unlocking");
-  myservo.write(0);
+  myservo.write(3);
   if (ultime == 0)
     beepDelay(500);
   ultime++;
@@ -972,7 +972,7 @@ void blinkGreen(void *pvParameters)
   {
     vTaskDelay(100);
     {
-      if  (millis() - start_time > 4000  && wa < 5)
+      if  (millis() - start_time > 6500  && wa < 5)
       {
        readscale1();
       }
@@ -2603,7 +2603,6 @@ void test()
   transmit_data();
 
   Serial.println(("SENSOR1 " + String(digitalRead(SENSOR1))));
-
   Serial.println(("SENSOR2 " + String(digitalRead(SENSOR2))));
   Serial.println(("OpenScale " + String(digitalRead(STATUSSCALE_PIN))));
   //readNFC();
@@ -2799,6 +2798,8 @@ boolean checkSamePlace()
 }
 void setup(void)
 {
+  pinMode(DONE_PIN, OUTPUT);
+  digitalWrite(DONE_PIN, LOW);
   //******* Open Scale to calibrate  **********
   Serial1.begin(9600, SERIAL_8N1, RXSCALE_PIN, TXSCALE_PIN, TXSCALE_PIN); //Scale port
   openScaleBin();
@@ -2843,6 +2844,7 @@ void setup(void)
       nfc_period = millis() - 14000;
     }
   }
+   
   restore_Tags();
   if (!readTaglist())
   {
@@ -2980,20 +2982,20 @@ void loop()
   if (stopWorking == 1)
     return;
   // checkFullBin();
-  if (mustUnlock == 1 && System_Tag == 0)
+  if (mustUnlock == 1  )
   {
     unlock();
   }
-  if (LockStatus == 1 && lc == 0 && System_Tag == 0)
+  if (LockStatus == 1 && lc == 0 && millis()-start_time>2000)
     lc = 1;
   // FIRST READ NFC -
-  if (LockStatus == 0)
+  if (LockStatus == 0 && mustUnlock == 1 )
   {
     readNFC();
     CheckNFC();
   }
   //δεν ανιχνευτηκε κάποιο Tag
-  if (millis() - start_time > 25000 && tagId == "")
+  if (millis() - start_time > 30000 && tagId == "")
   {
     Working_time = millis() - Working_time;
     Serial.println("SYSTEM POWER OFF DUE NO TAG DETECTION");
@@ -3033,7 +3035,7 @@ void loop()
       }
     }
 
-  if (LockStatus == 0 && digitalRead(STATUSSCALE_PIN) == Locker_Closed && System_Tag == 0)
+  if (LockStatus == 0 && digitalRead(STATUSSCALE_PIN) == Locker_Closed)
     AlarmOFF();
 
   //**************************************************************
@@ -3108,7 +3110,7 @@ void loop()
         transmit_data();
         working_period = 0;
         start_time = millis();
-        if (digitalRead(STATUSSCALE_PIN) == Locker_Closed && lc == 1)
+        if (digitalRead(STATUSSCALE_PIN) == Locker_Closed )
           lockByServo();
         Serial.println("SYSTEM POWER OFF");
         beep(2);
