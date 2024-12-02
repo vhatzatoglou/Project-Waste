@@ -1157,7 +1157,7 @@ boolean secure_postlog_gprs()
   String str, payload;
 
   String url = "http://device.scalebot.gr/api/Garb/DeviceSendBinInfo";
-
+ 
   //delay(1000);
   for (int i = 0; i < Datalist.size(); i++)
   {
@@ -2832,7 +2832,7 @@ void setup(void)
   openScaleBin();
   //********************************************
   Working_time = millis();
-
+  
   pinMode(DONE_PIN, OUTPUT);
   digitalWrite(DONE_PIN, LOW);
   pinMode(STATUSSCALE_PIN, INPUT); //read BIN  cover status
@@ -2853,7 +2853,7 @@ void setup(void)
       1,          /* priority of the task */
       &Task1,     /* Task handle to keep track of created task */
       0);         /* pin task to core 0 */
-  
+  test();
   nfc.begin();
   while (millis() - start_time < 30000 && tagId == "")
   {
@@ -2957,7 +2957,7 @@ void setup(void)
   // }
 
   //start_time=millis();
-  //test();
+   
   //Serial.println(("SENSOR1 " + String(digitalRead(SENSOR1))));
   // Serial.println(("SENSOR2 " + String(digitalRead(SENSOR2))));
   getSettings();
