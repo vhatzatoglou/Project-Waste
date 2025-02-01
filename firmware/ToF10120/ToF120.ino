@@ -44,19 +44,32 @@ void Scanner ()
 
 void setup() {
   Wire.begin();
-  Serial.begin(9600);
-  //  Serial2.begin(9600, SERIAL_8N1, rxPin, txPin);
-  //  Serial2.write("s7-168#");
+  Serial.begin(115200);
+ //  Serial2.begin(9600, SERIAL_8N1, rxPin, txPin);
+// Serial2.write("s7-164#");
+   //Serial2.write("s7-168#");
+   // Serial2.write("s7-100#");
+   //int dist = get_distance(0x32);
   //  Scanner ();
 }
 
 void loop() {
-  int dist1 = get_distance(0x54);
+  //default address 
+ // Serial2.write("s7-164#");
+  int dist1 = get_distance(0x52);
   Serial.print("distance1:");
   Serial.println(dist1);
-  delay(100);
-  int dist2 = get_distance(0x52);
+   delay(200);
+
+//  // Serial2.write("s7-168#");
+  int dist2 = get_distance(0x54);
   Serial.print("--Distance2:");
   Serial.println(dist2);
-  delay(100);
+  delay(200);
+
+  // Serial2.write("s7-100#");
+  int dist3 = get_distance(0x32);
+  Serial.print("--Distance3:");
+  Serial.println(dist3);
+  // delay(200);
 }
