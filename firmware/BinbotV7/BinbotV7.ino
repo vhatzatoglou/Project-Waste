@@ -120,7 +120,7 @@ int Left_Range=0x52;
 int Right_Range=0x54;
 int Cover_Range=0x32;
 float X_out, Y_out, Z_out;  // Outputs
-int CoverStatus=0;
+int CoverStatus=1;
 int Servo_i=60;
 enum _LockerStatus
 {
@@ -213,8 +213,8 @@ int binOrientation=0;
 #define LED_PIN 12
 //INPUT
 #define STATUSSCALE_PIN 34 //INPUT LOCKER
-#define SENSOR1 32         //INPUT
-#define SENSOR2 35         //INPUT
+// #define SENSOR1 32         //INPUT
+// #define SENSOR2 35         //INPUT
 //INPUT I2C
 #define SDA_PIN 21
 #define SCL_PIN 22
@@ -1284,7 +1284,7 @@ boolean postlog(String payload)
 }
 void openScale()
 {
-  Serial.println(("OpenScale " + String( CheckCoverSTatus())));
+   
   pinMode(SCALE_ONOFF_PIN, OUTPUT);
   digitalWrite(SCALE_ONOFF_PIN, HIGH);
   delay(200);
@@ -2181,7 +2181,8 @@ void CalculateCoverRange()
       for (int i = 0; i < 10 ; i++)
       {
         dist1 = get_distance(Cover_Range);
-        if ( dist1 >0)
+        delay(50);
+      //  if ( dist1 >0)
         {
             CoverRange.add(dist1); 
             if (CoverRange.size() > 10)
@@ -2197,22 +2198,39 @@ void CalculateCoverRange()
           }
         }
       }
+       Serial.println("Cover is   : " + String(dist1));
 }
+
+int checkClosed=0;
+int checkOpened=0;
 int CheckCoverSTatus()
 {
     
   // Serial.println("**** Check Cover****");
-  if (dist1<20 &&  CoverStatus!=Locker_Closed)
+  if (dist1<10 &&  CoverStatus!=Locker_Closed)
     { 
        Serial.println("Cover is  Closed : " + String(dist1));
-       CoverStatus=Locker_Closed;
-       return Locker_Closed;
+       checkClosed++;
+       if (checkClosed==4)
+       {
+         CoverStatus=Locker_Closed;
+          checkClosed=0;
+          checkOpened=0;
+       }
+
+       return CoverStatus;
     }
-   if (dist1>25 &&  CoverStatus==Locker_Closed)
+   if (dist1>20 &&  CoverStatus==Locker_Closed )
    {
-     Serial.println("Cover is  Opened: "  + String(dist1));
-     CoverStatus=Locker_Opened;
-     return   Locker_Opened;  
+     Serial.println("Cover is  Opened : "  + String(dist1));
+         checkOpened++;
+       if (checkOpened==2)
+       {
+          CoverStatus=Locker_Opened;
+           checkOpened=0;
+           checkClosed=0;
+       }
+     return   CoverStatus;  
    }
  
 
@@ -2389,7 +2407,8 @@ void CheckNFC()
   // Serial.println("Nfc read" );
   if (tagId != "")
   {
-
+      CalculateCoverRange();
+ 
     {
       if (checkTags())
         if (mustUnlock == 0)
@@ -2888,18 +2907,30 @@ void ReadAccelerometer()
  accelgyro.getMotion6(&ax, &ay, &az, &gx, &gy, &gz);
  accAngleX = (atan(ay / sqrt(pow(ax, 2) + pow(az, 2))) * 180 / PI) - 0.58; // AccErrorX ~(0.58) See the calculate_IMU_error()custom function for more details
  accAngleY = (atan(-1 * ax / sqrt(pow(ay, 2) + pow(az, 2))) * 180 / PI) + 1.58; // AccErrorY ~(-1.58)
- while (millis() - acc_time >1000 )
+ while (millis() - acc_time >2000 )
   {
     acc_time=millis();
     Serial.println("accAngleY:"   + String (accAngleY)); 
     Serial.println("accAngleX:" + String (accAngleX)); 
+    readGaslevel();
   }
   
+}
+void readGaslevel()
+{
+  int val=0;
+  val=analogRead(32);//Read Gas value
+  Serial.println("Gas level:" + String(val));//Print
+//Serial.println(val,DEC);
+val=(val*100/4096);
+ 
+//Serial.println("Gas level:" + String(val));//Print
 }
 int violationTime=0;
 void ProceessAccelerometer()
 {
-  if (NewVersion==0) return;
+  //if (NewVersion==0) 
+  return;
   if (abs(accAngleY)<60.0  &&  violationTime==0 &&  binOrientation==Bin_Up )
          { 
            // violationTime=0;  
@@ -3366,8 +3397,10 @@ void setup(void)
   //******* Open Scale to calibrate  **********
   
   Serial1.begin(9600, SERIAL_8N1, RXSCALE_PIN, TXSCALE_PIN, TXSCALE_PIN); //Scale port
+  Serial.begin(115200);
   openScaleBin();
   closeWifi();
+
  // openWifi();
    
   //********************************************
@@ -3376,19 +3409,27 @@ void setup(void)
   pinMode(DONE_PIN, OUTPUT);
   digitalWrite(DONE_PIN, LOW);
   pinMode(STATUSSCALE_PIN, INPUT); //read BIN  cover status
-  pinMode(SENSOR1, INPUT);
-  pinMode(SENSOR2, INPUT);
+  // pinMode(SENSOR1, INPUT);
+  // pinMode(SENSOR2, INPUT);
   pinMode(LED_PIN, OUTPUT);
   digitalWrite(LED_PIN, LOW);
   myservo.attach(SERVO_PIN); // attaches the servo on pin 18 to the servo object
                              // using default min/max of 1000us and 2000us
                              // different servos may require different min/max settings
                              // for an accurate 0 to 180 sweep
-  Serial.begin(115200);
+ 
   SetAccelerometer();
   nfc.begin();
   getSettings();
-  CheckCoverSTatus();
+  CalculateCoverRange();
+  CalculateCoverRange();
+  readGaslevel();
+  //     while  ( 1==1)
+  //  {
+  //   CalculateCoverRange();
+  //   delay(1000);
+  //  }
+  // return;
   xTaskCreatePinnedToCore(
       blinkGreen, /* Task function. */
       "Task1",    /* name of task. */
@@ -3401,11 +3442,12 @@ void setup(void)
   Serial.println("NFC Reader Start reading...");
   while (millis() - start_time < 30000 && tagId == "" && Garbagecollection==0)
   {
-    
+     if ( CoverStatus!=Locker_Closed)
+    CalculateCoverRange();
     readNFC();
     ReadAccelerometer();
     ProceessAccelerometer();
-    CalculateCoverRange();
+    
  
   }
   restore_Tags();
@@ -3555,6 +3597,7 @@ void ScaleCal()
 void loop()
 {
    ScaleCal();
+   
   if (stopWorking == 1)
     return;
   ReadAccelerometer();
