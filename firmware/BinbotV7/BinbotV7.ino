@@ -8,6 +8,9 @@
     #include "Wire.h"
 #endif
 
+#include "ACS712.h"
+
+ACS712  ACS(36, 3.3, 4095, 185);
 // class default I2C address is 0x68
 // specific I2C addresses may be passed as a parameter here
 // AD0 low = 0x68 (default for InvenSense evaluation board)
@@ -86,7 +89,9 @@ TinyGsm modem(SerialAT);
 //#include <ADXL345.h>
 #include "AES.h"
 #include "Base64.h"
+#include <VL6180X.h>
 
+VL6180X Cover_sensor;
 AES aes;
 
 // Our AES key. Same in NodeJS but in hex bytes
@@ -115,6 +120,7 @@ int p, DAY1, MONTH_, YEAR_, YEAR1, Seconds_, Hours_, Minutes_, hourOfDay, DAY_OF
 boolean GPRS_on;
 int sp=0;
 bool reply = false;
+bool checkObstacle=false;
 //int ADXL345 = 0x53;
 int Left_Range=0x52;
 int Right_Range=0x54;
@@ -255,7 +261,7 @@ String URL;
 String f;
 int wa = 0;
 int scaleIsConnected = 0;
-int step, Lockstatus = 0;
+int step, Lockstatus = 0,TagPresent=0;
 byte scale_status = 0;
 long delayTime;
 boolean hasServo = true;
@@ -264,13 +270,13 @@ long working_period = millis();
 long nfc_period = millis();
 float batterylevel, voltage;
 String APs="",APs_="";
-int mVperAmp = 195;           // this the 5A version of the ACS712 -use 100 for 20A Module and 66 for 30A Module
+int mVperAmp = 100;           // this the 5A version of the ACS712 -use 100 for 20A Module and 66 for 30A Module
 double Watt = 0;
 double TotalWatt = 0;
 double Voltage = 0;
 double VRMS = 0;
 double AmpsRMS = 0;
-int NewVersion=0;
+int NewVersion=0,obsCnt=0;
 void store_Tag(int type, String Id)
 {
 
@@ -386,7 +392,7 @@ void lockByServo()
     {
       Servo_i++;
       myservo.write(Servo_i); //turn servo by 1 degrees
-      delay(25);        //delay for smoothness
+      delay(15);        //delay for smoothness
        
     }
   //  for(int i=3; i<=85; i+=1)
@@ -404,6 +410,10 @@ void lockByServo()
   //   myservo.write(pos1);              // tell servo to go to position in variable 'pos'
   //   delay(15);                       // waits 15ms for the servo to reach the position
   // }
+   checkObstacle=true;
+   ultime=0;
+   obsCnt=0;
+   storeSettings();
 }
 void beepDelay(int period = 1000)
 {
@@ -423,14 +433,14 @@ void UnlockByServo()
 {
   //myservo.attach(SERVO_PIN); 
   //delay(1000);
-  
+  obsCnt=0;
  
   if (ultime == 0)
   {
     Serial.println("Unlocking");
     beepDelay(500);
-       
-    if (ultime == 0)
+     ultime++; 
+    if (ultime >0)
     while (Servo_i>2)
     {
       Servo_i--;
@@ -439,9 +449,11 @@ void UnlockByServo()
       ultime++;
     }
   }
-  
+  storeSettings();
  
 }
+
+
 void NFC_RST()
 {
   Serial.println("NFC Restart");
@@ -461,7 +473,7 @@ float getVPP()
   int minValue = 4096;          // store min value here ESP32 ADC resolution
   
    uint32_t start_time = millis();
-   while((millis()-start_time) < 200) //sample for 1 Sec
+   while((millis()-start_time) < 1000) //sample for 1 Sec
    {
        readValue = analogRead(ADC_PIN);
        // see if you have a new maxValue
@@ -494,9 +506,12 @@ void check_battery()
   
   VRMS = (Voltage/2.000) *0.707;   //root 2 is 0.707
   AmpsRMS = ((VRMS * 1000)/mVperAmp); //0.3 is the error I got for my sensor
- 
-  //Serial.print(AmpsRMS);
-  //Serial.print(" Amps RMS  ---  ");
+if (AmpsRMS>1 && checkObstacle==true )
+    obsCnt++;
+if (obsCnt>1)
+    UnlockByServo();
+  Serial.print(AmpsRMS);
+  Serial.print(" Amps RMS  ---  ");
   Watt = (AmpsRMS*5.000/1.200);
   // note: 1.2 is my own empirically established calibration factor
 // as the voltage measured at D34 depends on the length of the OUT-to-D34 wire
@@ -1146,7 +1161,7 @@ void blinkGreen(void *pvParameters)
   {
     vTaskDelay(100);
     check_battery();
-
+   // ReadMmA();
    //calibrate Scale
    //if (CoverStatus ==Locker_Closed )
     
@@ -1161,7 +1176,7 @@ void blinkGreen(void *pvParameters)
 
     
     // CheckCoverSTatus();
-    if ( CoverStatus == Locker_Closed && mustUnlock == 0)
+    if ( CoverStatus == Locker_Closed && (TagPresent == 0))
     {
        if (gr>=0)
         p = 3;
@@ -2079,6 +2094,8 @@ void getSettings()
       Serial.println("mAh : " + String(TotalWatt));
       chgTimes = doc["CHG"];
       Serial.println("chgTimes : " + String(chgTimes));
+      Servo_i= doc["SRV"];
+      Serial.println("Servo_i : " + String(Servo_i));
       Serial.println("==========================================================");
     }
 
@@ -2120,7 +2137,7 @@ void storeSettings()
     js["BFL"] = BinFull;
     js["MAH"] = TotalWatt;
     js["CHG"] = chgTimes;
-
+    js["SRV"] =Servo_i;
     File f = SPIFFS.open("/Settings", "w");
     if (serializeJson(js, f) == 0)
     {
@@ -2178,16 +2195,16 @@ void getGr()
 int dist1 =0;
 void CalculateCoverRange()
 {
-      for (int i = 0; i < 10 ; i++)
+      for (int i = 0; i < 5 ; i++)
       {
-        dist1 = get_distance(Cover_Range);
+        dist1 = Cover_sensor.readRangeSingleMillimeters();
         delay(50);
       //  if ( dist1 >0)
         {
             CoverRange.add(dist1); 
-            if (CoverRange.size() > 10)
+            if (CoverRange.size() > 5)
               CoverRange.remove(0);
-          if (CoverRange.size() == 10)
+          if (CoverRange.size() == 5)
           {
             dist1 =0;
             for (int i = 0; i < CoverRange.size() ; i++)
@@ -2207,7 +2224,7 @@ int CheckCoverSTatus()
 {
     
   // Serial.println("**** Check Cover****");
-  if (dist1<10 &&  CoverStatus!=Locker_Closed)
+  if (dist1<20 &&  CoverStatus!=Locker_Closed)
     { 
        Serial.println("Cover is  Closed : " + String(dist1));
        checkClosed++;
@@ -2220,7 +2237,7 @@ int CheckCoverSTatus()
 
        return CoverStatus;
     }
-   if (dist1>20 &&  CoverStatus==Locker_Closed )
+   if (dist1>25 &&  CoverStatus==Locker_Closed )
    {
      Serial.println("Cover is  Opened : "  + String(dist1));
          checkOpened++;
@@ -2281,6 +2298,7 @@ void unlock()
     //  scale_status = 1;
     Lockstatus = 1;
     mustUnlock = 0;
+    TagPresent=0;
     start_time = millis();
   }
 }
@@ -2395,23 +2413,25 @@ void readNFC()
       step = 1;
     we = 0;
     //if (Lockstatus == 0)
+    TagPresent=1; 
   }
   else
   {
   }
   delay(50);
+  
 }
 
 void CheckNFC()
 {
   // Serial.println("Nfc read" );
-  if (tagId != "")
+  if (tagId != "" &&  mustUnlock == 0)
   {
       CalculateCoverRange();
  
     {
       if (checkTags())
-        if (mustUnlock == 0)
+        //if (mustUnlock == 0)
         {
           if ((Garbagecollection == 0 && Mainntanace == 0)) // !checkFullBin()  && // && CoverStatus ==Locker_Closed
             mustUnlock = 1;
@@ -3413,18 +3433,28 @@ void setup(void)
   // pinMode(SENSOR2, INPUT);
   pinMode(LED_PIN, OUTPUT);
   digitalWrite(LED_PIN, LOW);
-  myservo.attach(SERVO_PIN); // attaches the servo on pin 18 to the servo object
-                             // using default min/max of 1000us and 2000us
-                             // different servos may require different min/max settings
-                             // for an accurate 0 to 180 sweep
- 
+  myservo.attach(SERVO_PIN); 
+   
+  Wire.begin();
+  Cover_sensor.init();
+  Cover_sensor.configureDefault();
+  Cover_sensor.writeReg(VL6180X::SYSRANGE__MAX_CONVERGENCE_TIME, 30);
+  Cover_sensor.writeReg16Bit(VL6180X::SYSALS__INTEGRATION_PERIOD, 50);
+  Cover_sensor.setTimeout(500);
+  Cover_sensor.stopContinuous();
+  // in case stopContinuous() triggered a single-shot
+  // measurement, wait for it to complete
+  delay(300);
+  // start interleaved continuous mode with period of 100 ms
+  Cover_sensor.startInterleavedContinuous(100);
+
   SetAccelerometer();
   nfc.begin();
   getSettings();
   CalculateCoverRange();
   CalculateCoverRange();
   readGaslevel();
-  //     while  ( 1==1)
+  // while  ( 1==1)
   //  {
   //   CalculateCoverRange();
   //   delay(1000);
@@ -3442,13 +3472,11 @@ void setup(void)
   Serial.println("NFC Reader Start reading...");
   while (millis() - start_time < 30000 && tagId == "" && Garbagecollection==0)
   {
-     if ( CoverStatus!=Locker_Closed)
+    // if ( CoverStatus!=Locker_Closed)
     CalculateCoverRange();
     readNFC();
     ReadAccelerometer();
     ProceessAccelerometer();
-    
- 
   }
   restore_Tags();
   if (!readTaglist())
@@ -3655,6 +3683,7 @@ void loop()
       lockByServo();
       CloseScaleBin();
       mustUnlock = 0;
+      TagPresent=0;
    if ( !checkSamePlace())
     {    
        prepare_Wifi_Gps_Data(NewLocationDetected);
@@ -3724,6 +3753,7 @@ void loop()
     if (CoverStatus ==Locker_Opened && Mainntanace == 0 ) //&& lc == 1
     {
       Serial.println("Cover is opened too long");
+      TagPresent=0;
       // if (millis() - start_time > 50000 && millis() - start_time < 60000)
 
      // if (millis() - start_time > 80000)
@@ -3740,6 +3770,9 @@ void loop()
               break; //change
             i++;
           }
+        //*****************************   Κλείσε την ζυγαρία  ***********************************
+        CloseScaleBin();
+        
          {
           StaticJsonDocument<250> doc;
           if (Garbagecollection == 1)
@@ -3792,7 +3825,7 @@ void loop()
   if ((millis() - start_time > 30000   && Garbagecollection == 1) || (millis() - start_time > 1000   && Garbagecollection == 0))
   if (CoverStatus ==Locker_Closed && lc == 1 && binOrientation==Bin_Up )
   {
- 
+     TagPresent=0;
     if (lc == 1)
     {
       if (Garbagecollection == 1)
@@ -3810,7 +3843,8 @@ void loop()
    // if ( (abs(accAngleX)<30.0 && abs(accAngleY)>60.0))   
    if  (hasServo == true)
     lockByServo();
-
+    ultime=0;
+   // checkObstacle=true; 
     //******************* Ο δημότης πεταξε τα σκουπιδια μέσα και το σύστημα πρέπει να τα ζυγίσει και να τα στείλει *************
     if (Garbagecollection == 0)
     // if (step == 1)
@@ -3882,6 +3916,7 @@ void loop()
        prepare_Wifi_Gps_Data(NewLocationDetected);
     }
     delay(1000);
+    checkObstacle=false;
     transmit_data();
     working_period = 0;
     beep(1);
