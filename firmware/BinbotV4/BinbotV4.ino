@@ -63,6 +63,7 @@ int System_Tag = 0;
 byte stopWorking = 0;
 long open_cover_time = millis();
 long start_time = millis();
+long lock_time = 0;
 float Working_time = millis();
 float Working_time_connecting = 0;
 float Working_time_posting = 0;
@@ -177,7 +178,7 @@ int formatF = 0;
 int Garbagecollection = 0;
 int Mainntanace = 0;
 int BinFull = 0;
-int ultime = 0, mustUnlock = 0;
+int ultime = 0, mustUnlock = 0,Servo_i=60;
 const char *ntpServer = "pool.ntp.org";
 const long gmtOfSPIFFSet_sec = 0;
 const int daylightOfSPIFFSet_sec = 3600;
@@ -191,7 +192,7 @@ String URL;
 String f;
 int a = 0;
 int scaleIsConnected = 0;
-int step, LockStatus = 0;
+int step=0, LockStatus = 0,TagPresent=0;
 byte scale_status = 0;
 long delayTime;
 boolean hasServo = true;
@@ -303,23 +304,41 @@ void restore_Tags()
   SPIFFS.end();
 }
 int pos1 = 0;
+ 
 void lockByServo()
 {
-  Serial.println("locking");
-  delay(1000);
-  if (digitalRead(STATUSSCALE_PIN) == Locker_Closed)
-   for(int i=3; i<=85; i+=1)
+ // myservo.attach(SERVO_PIN); 
+  //  if ( Lockstatus==1)
+  //   return;
+ //if (CoverStatus ==Locker_Closed)
+    Servo_i=2;
+    if (digitalRead(STATUSSCALE_PIN) ==Locker_Closed)
+    while (Servo_i<60)
     {
-      myservo.write(i); //turn servo by 1 degrees
-      delay(20);        //delay for smoothness
+      Servo_i++;
+      myservo.write(Servo_i); //turn servo by 1 degrees
+      delay(15);        //delay for smoothness
+       
     }
-   // myservo.write(80);
+  //  for(int i=3; i<=85; i+=1)
+  //   {
+  //     Serial.println("locking : " + String(i));
+  //     myservo.write(i); //turn servo by 1 degrees
+  //     delay(20);        //delay for smoothness
+  //   }
+  // delay(1000);
+  // myservo.detach();
+  //  Lockstatus=1;
 
   // for (pos1 = 0; pos1 <= 180; pos1 += 1) { // goes from 0 degrees to 180 degrees
   //   // in steps of 1 degree
   //   myservo.write(pos1);              // tell servo to go to position in variable 'pos'
   //   delay(15);                       // waits 15ms for the servo to reach the position
   // }
+   
+   ultime=0;
+   
+   
 }
 void beepDelay(int period = 1000)
 {
@@ -337,40 +356,29 @@ void beepDelay(int period = 1000)
 }
 void UnlockByServo()
 {
-  Serial.println("Unlocking");
-    int i=85;
-    if (ultime == 0)
-    while (i>3)
-    {
-      myservo.write(i); //turn servo by 1 degrees
-      delay(15);        //delay for smoothness
-      i--;
-    }
- // myservo.write(3);
+  //myservo.attach(SERVO_PIN); 
+  //delay(1000);
+  
+ 
   if (ultime == 0)
-    beepDelay(500);
-  ultime++;
-  if (ultime == 100000) //test
   {
-    String s = "";
-    StaticJsonDocument<250> doc;
-    binstatus = ProblemCoverNotOpening;
-    doc["sst"] = binstatus;
-    doc["scd"] = DSN;
-    doc["dts"] = "timestamp";
-    doc["btr"] = batterylevel;
-    serializeJson(doc, s);
-    Serial.println(s);
-    Datalist.add(s);
-    gr++;
-    storeGr();
-    store_Datalist(gr);
-    enablePost = 1;
-    //transmit_data();
-    // working_period = 0;
-    //done();
+    Serial.println("Unlocking");
+    beepDelay(500);
+     ultime++; 
+     Servo_i=60;
+   if (ultime >0)
+    while (Servo_i>2)
+    {
+      Servo_i--;
+      myservo.write(Servo_i); //turn servo by 1 degrees
+      delay(15);        //delay for smoothness
+      ultime++;
+    }
   }
+   
+ 
 }
+
 void NFC_RST()
 {
   Serial.println("NFC Restart");
@@ -994,8 +1002,9 @@ void blinkGreen(void *pvParameters)
 
      
     }
+    
 
-    if (digitalRead(STATUSSCALE_PIN) == Locker_Closed && mustUnlock == 0)
+    if (digitalRead(STATUSSCALE_PIN) == Locker_Closed && (TagPresent == 0))
     {
       if (we == 1)
         p = 3;
@@ -1969,6 +1978,8 @@ void getGr()
     {
       gr = js["GR"];
       Serial.println("GR: " + String(gr));
+      if (gr>5)
+      enablePost = 1;
     }
     f.close();
   }
@@ -1976,6 +1987,7 @@ void getGr()
 
 boolean checkFullBin()
 {
+  if (hourOfDay<20)  return false;
   Serial.println("**** CheckFullBin ****");
   if (digitalRead(SENSOR1) == 0)
     Serial.println("SENSOR1 ΑΔΕΙΟΣ");
@@ -2005,45 +2017,6 @@ void unlock()
     //   break;
     // }
 
-    if (hasServo == false)
-    {
-      //trigger locker to unlock
-      pinMode(LOCKER_PIN, OUTPUT);
-      digitalWrite(LOCKER_PIN, HIGH);
-
-      scaleIsConnected = 0;
-      ultime++;
-      if (ultime < 10)
-        beep(1);
-      else
-      {
-        delay(1000);
-      }
-      pinMode(LOCKER_PIN, INPUT);
-      //delay(1000);
-
-      //readscale();
-      if (ultime == 30) //test
-      {
-        StaticJsonDocument<250> doc;
-        binstatus = ProblemCoverNotOpening;
-        doc["sst"] = binstatus;
-        doc["scd"] = DSN;
-        doc["dts"] = "timestamp";
-        doc["btr"] = batterylevel;
-        serializeJson(doc, s);
-        Serial.println(s);
-        Datalist.add(s);
-        gr++;
-        storeGr();
-        store_Datalist(gr);
-        enablePost = 1;
-        transmit_data();
-        working_period = 0;
-        done();
-      }
-    }
-    else
       UnlockByServo();
 
     //if (eTaskGetState(&Task1)==2)
@@ -2051,7 +2024,7 @@ void unlock()
   //bin is opened
   if (digitalRead(STATUSSCALE_PIN) == Locker_Opened)
   {
-
+    lock_time = 0;
     pinMode(LOCKER_PIN, INPUT);
     if (ultime == 0)
       beepDelay(250);
@@ -2062,6 +2035,7 @@ void unlock()
     //  scale_status = 1;
     LockStatus = 1;
     mustUnlock = 0;
+    TagPresent=0; 
     //start_time = millis();
   }
 }
@@ -2169,28 +2143,28 @@ void readNFC()
     tagId.replace(" ", "");
     open_cover_time = millis();
     working_period = millis();
-    if (digitalRead(STATUSSCALE_PIN) == Locker_Opened)
-      beepDelay(250);
+    //if (digitalRead(STATUSSCALE_PIN) == Locker_Opened)
+    beepDelay(500);
     if (LockStatus == 1) //checkTags()==false && //TEST
       step = 1;
     we = 0;
     //if (LockStatus == 0)
+    TagPresent=1;
   }
   else
   {
   }
-  delay(50);
+  delay(20);
 }
-
 void CheckNFC()
 {
   // Serial.println("Nfc read" );
-  if (tagId != "")
+  if (tagId != "" &&  mustUnlock == 0)
   {
 
     {
-      if (checkTags())
-        if (mustUnlock == 0)
+      if (checkTags()  )
+       // if (mustUnlock == 0)
         {
           if ((Garbagecollection == 0 && Mainntanace == 0)) // !checkFullBin()  && // && digitalRead(STATUSSCALE_PIN) == Locker_Closed
             mustUnlock = 1;
@@ -2264,7 +2238,6 @@ void CheckNFC()
   }
   delay(50);
 }
-
 void done()
 {
 
@@ -2315,17 +2288,15 @@ void AlarmOn()
   transmit_data();
   done();
 }
-
 void AlarmOFF()
 {
   SPIFFS.end();
   pinMode(ALARM_PIN, INPUT);
 }
-
 void transmit_data()
 {
   Working_time = millis() - Working_time;
-  if (gr >= 0) // && enablePost==1
+  if (gr >= 0 && enablePost==1) //  
   {
     Serial.println("BinBot has began the trasmitting procedure");
     //*****************************   Κλείσε την ζυγαρία  *************************************
@@ -2337,7 +2308,29 @@ void transmit_data()
     // SerialAT.begin(115200, SERIAL_8N1, PIN_RX, PIN_TX); //Modem port
 
     modem_on();
-     
+    //****************************    Έλεγχσς αν ο κάδος γέμισε  ****************************
+    if (checkFullBin() && BinFull == 0)
+    {
+      BinFull = 1;
+      storeSettings();
+      //pinMode(GREEN_PIN, INPUT);
+      Serial.println("**** Bin Is Full ****");
+      //BEEP 2 TIMES TO INDICATE BIN IS FULL
+      // beep(6);
+      StaticJsonDocument<250> doc;
+      binstatus = BinIsFull;
+      doc["sst"] = binstatus;
+      doc["scd"] = DSN;
+      doc["dts"] = "timestamp";
+      doc["btr"] = batterylevel;
+      serializeJson(doc, s);
+      Serial.println(s);
+      Datalist.add(s);
+      gr++;
+      storeGr();
+      store_Datalist(gr);
+      enablePost = 1;
+    }
     
     int r;
     File f;
@@ -2853,13 +2846,14 @@ void setup(void)
       1,          /* priority of the task */
       &Task1,     /* Task handle to keep track of created task */
       0);         /* pin task to core 0 */
-  test();
+  //test();
   nfc.begin();
   while (millis() - start_time < 30000 && tagId == "")
   {
     Serial.println("NFC Reader Start reading...");
     //if ( digitalRead(STATUSSCALE_PIN) == Locker_Closed)
     readNFC();
+    
     if (!nfc.begin())
     {
       //nfc = NfcAdapter(pn532_i2c);
@@ -2913,6 +2907,7 @@ void setup(void)
   }
 
   getGr();
+  CheckNFC();
   //test**********************************
 
   // //========================================
@@ -2959,7 +2954,7 @@ void setup(void)
   //start_time=millis();
    
   //Serial.println(("SENSOR1 " + String(digitalRead(SENSOR1))));
-  // Serial.println(("SENSOR2 " + String(digitalRead(SENSOR2))));
+  //Serial.println(("SENSOR2 " + String(digitalRead(SENSOR2))));
   getSettings();
 
   // Serial.println("++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++");
@@ -2968,10 +2963,7 @@ void setup(void)
   // Serial.println("*******   ΜΗΤΕΡΑ ΣΕ ΕΥΧΑΡΙΣΤΩ ΠΟΛΥ ΠΟΥ ΜΕ ΜΕΓΑΛΩΣΕΣ ΓΕΡΟ ΚΑΙ ΔΥΝΑΤΟ  ********");
   // Serial.println("+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++");
 
-
-  CheckNFC();
-
-  Serial.println("****************     STARTING   BINBOT SYSTEM  ver 4.000    ***************");
+    Serial.println("****************     STARTING   BINBOT SYSTEM  ver 4.5    ***************");
 }
 boolean readTaglist()
 {
@@ -3010,7 +3002,7 @@ void loop()
   ScaleCal();
   if (stopWorking == 1)
     return;
-  // checkFullBin();
+  //checkFullBin();
   if (mustUnlock == 1  )
   {
     unlock();
@@ -3018,18 +3010,19 @@ void loop()
   if (LockStatus == 1 && lc == 0 && millis()-start_time>2000)
     lc = 1;
   // FIRST READ NFC -
-  if (LockStatus == 0 && mustUnlock == 1 )
+  if (LockStatus == 0 )
   {
     readNFC();
     CheckNFC();
   }
+  if (digitalRead(STATUSSCALE_PIN) == Locker_Opened)
+      lock_time = 0;
   //δεν ανιχνευτηκε κάποιο Tag
   if (millis() - start_time > 30000 && tagId == "")
   {
     Working_time = millis() - Working_time;
     Serial.println("SYSTEM POWER OFF DUE NO TAG DETECTION");
-    if (digitalRead(STATUSSCALE_PIN) == Locker_Opened)
-      lockByServo();
+    lockByServo();
     beep(2);
     done();
   }
@@ -3042,6 +3035,7 @@ void loop()
       Serial.println("SYSTEM POWER OFF BECAUSE COVER NOT OPENED");
       lockByServo();
       mustUnlock = 0;
+      TagPresent=0;
       if (tagId != "")
       {
         String s = "";
@@ -3103,12 +3097,12 @@ void loop()
   }
 
   //δεν έκλεισε ο δημότης τον κάδο πάνω απο 40 δευτερόλεπτα
-  if (millis() - start_time > 80000)
+  if (millis() - start_time > 80000 && start_time>0)
     if (digitalRead(STATUSSCALE_PIN) == Locker_Opened && Mainntanace == 0 && Garbagecollection == 0) //&& lc == 1
     {
       Serial.println("Cover is opened too long");
       // if (millis() - start_time > 50000 && millis() - start_time < 60000)
-
+      TagPresent=0;
       if (millis() - start_time > 80000)
       {
         //beepDelay(1000);
@@ -3123,6 +3117,10 @@ void loop()
               break; //change
             i++;
           }
+
+        //*****************************   Κλείσε την ζυγαρία  ***********************************
+        CloseScaleBin();
+
         StaticJsonDocument<250> doc;
         binstatus = ProblemCoverIsOpentoLong;
         doc["sst"] = binstatus;
@@ -3135,10 +3133,10 @@ void loop()
         gr++;
         storeGr();
         store_Datalist(gr);
-        enablePost = 1;
+        //enablePost = 1;
         transmit_data();
         working_period = 0;
-        start_time = millis();
+        //start_time = millis();
         if (digitalRead(STATUSSCALE_PIN) == Locker_Closed )
           lockByServo();
         Serial.println("SYSTEM POWER OFF");
@@ -3151,11 +3149,16 @@ void loop()
     }
 
   //*******************  O ΚΑΔΟΣ ΕΚΛΕΙΣΕ ΚΑΙ ΠΡΕΠΕΙ ΝΑ ΣΤΕΙΛΕΙ ΔΕΔΟΜΕΝΑ ********************
-
-  //if (millis() - start_time > 4000)
+     if (digitalRead(STATUSSCALE_PIN) == Locker_Closed && lock_time==0)
+      { 
+        lock_time = millis();
+        if (Garbagecollection == 1)
+        lock_time = millis()-10000;
+      }
+  if (millis() - lock_time > 2000 &&  lock_time>0)  
   if (digitalRead(STATUSSCALE_PIN) == Locker_Closed && lc == 1)
   {
-
+    TagPresent=0;
     if (lc == 1)
     {
       if (Garbagecollection == 1)
@@ -3187,30 +3190,6 @@ void loop()
     }
     //*****************************   Κλείσε την ζυγαρία  ***********************************
     CloseScaleBin();
-
-    //****************************    Έλεγχσς αν ο κάδος γέμισε  ****************************
-    if (checkFullBin() && BinFull == 0)
-    {
-      BinFull = 1;
-      storeSettings();
-      //pinMode(GREEN_PIN, INPUT);
-      Serial.println("**** Bin Is Full ****");
-      //BEEP 2 TIMES TO INDICATE BIN IS FULL
-      // beep(6);
-      StaticJsonDocument<250> doc;
-      binstatus = BinIsFull;
-      doc["sst"] = binstatus;
-      doc["scd"] = DSN;
-      doc["dts"] = "timestamp";
-      doc["btr"] = batterylevel;
-      serializeJson(doc, s);
-      Serial.println(s);
-      Datalist.add(s);
-      gr++;
-      storeGr();
-      store_Datalist(gr);
-      enablePost = 1;
-    }
 
     if (Garbagecollection == 1 || Mainntanace == 1)
     {
