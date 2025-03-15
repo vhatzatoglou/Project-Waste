@@ -9,7 +9,9 @@
 #endif
 
 #include "ACS712.h"
+#include <Adafruit_INA219.h>
 
+Adafruit_INA219 ina219;
 ACS712  ACS(36, 3.3, 4095, 185);
 // class default I2C address is 0x68
 // specific I2C addresses may be passed as a parameter here
@@ -271,12 +273,12 @@ long nfc_period = millis();
 float batterylevel, voltage;
 String APs="",APs_="";
 int mVperAmp = 100;           // this the 5A version of the ACS712 -use 100 for 20A Module and 66 for 30A Module
-double Watt = 0;
-double TotalWatt = 0;
-double Voltage = 0;
-double VRMS = 0;
-double AmpsRMS = 0;
-int NewVersion=0,obsCnt=0;
+double Total_mA = 0;
+float current_mA = 0;
+float power_mW = 0;
+int battery_time=0;
+int NewVersion=0;
+int I2cbusy=0;
 void store_Tag(int type, String Id)
 {
 
@@ -412,7 +414,7 @@ void lockByServo()
   // }
    checkObstacle=true;
    ultime=0;
-   obsCnt=0;
+   
    storeSettings();
 }
 void beepDelay(int period = 1000)
@@ -433,7 +435,7 @@ void UnlockByServo()
 {
   //myservo.attach(SERVO_PIN); 
   //delay(1000);
-  obsCnt=0;
+  
  
   if (ultime == 0)
   {
@@ -497,32 +499,22 @@ float getVPP()
  int b1=0;
 void check_battery()
 {
-  Voltage =Voltage + getVPP();
-  b1++;
-  if (b1<4)
-  return;
-  Voltage=Voltage/b1;
-  b1=0;
   
-  VRMS = (Voltage/2.000) *0.707;   //root 2 is 0.707
-  AmpsRMS = ((VRMS * 1000)/mVperAmp); //0.3 is the error I got for my sensor
-if (AmpsRMS>1 && checkObstacle==true )
-    obsCnt++;
-if (obsCnt>1)
-    UnlockByServo();
-  Serial.print(AmpsRMS);
-  Serial.print(" Amps RMS  ---  ");
-  Watt = (AmpsRMS*5.000/1.200);
-  // note: 1.2 is my own empirically established calibration factor
-// as the voltage measured at D34 depends on the length of the OUT-to-D34 wire
-// 240 is the main AC power voltage – this parameter changes locally
- // Serial.print(Watt);
- // Serial.print(" mWH");
-  TotalWatt=TotalWatt+Watt*1000/3600;
- // Serial.print("-- Total mWh:" + String(TotalWatt));
-  double bat=(30*1000*5-TotalWatt)*100/(30*1000*5);
-  //Serial.println("-- Battery % :" + String(bat));
-  batterylevel=bat;
+  if (millis() - battery_time > 1000 &&   I2cbusy==0 )
+  {
+      I2cbusy=1;
+      Serial.print("Current:       "); Serial.print(current_mA); Serial.println(" mA");
+      Serial.print("Power:         "); Serial.print(power_mW); Serial.println(" mW");
+      current_mA = ina219.getCurrent_mA();
+      Total_mA=Total_mA+current_mA;
+      if (current_mA>1500)
+      UnlockByServo();
+      double bat=(30000*3600-Total_mA)*100/(30000*3600);
+      Serial.println("-- Battery % :" + String(bat));
+      batterylevel=bat;
+      battery_time=millis();
+      I2cbusy=0;
+  }
 
 
 }
@@ -1161,8 +1153,7 @@ void blinkGreen(void *pvParameters)
   {
     vTaskDelay(100);
     check_battery();
-   // ReadMmA();
-   //calibrate Scale
+   
    //if (CoverStatus ==Locker_Closed )
     
     {
@@ -1176,7 +1167,7 @@ void blinkGreen(void *pvParameters)
 
     
     // CheckCoverSTatus();
-    if ( CoverStatus == Locker_Closed && (TagPresent == 0))
+    if ( (CoverStatus == Locker_Closed) && (TagPresent == 0))
     {
        if (gr>=0)
         p = 3;
@@ -1191,7 +1182,7 @@ void blinkGreen(void *pvParameters)
       }
       if ((millis() - delayTime) > 500 / 2 && (millis() - delayTime) < 999 / 2)
       {
-        pinMode(GREEN_PIN, INPUT);
+           pinMode(GREEN_PIN, INPUT);
       }
       if ((millis() - delayTime) > 1000 / p)
       {
@@ -2090,11 +2081,11 @@ void getSettings()
 
       BinFull = doc["BFL"];
       Serial.println("BinFull : " + String(BinFull));
-      TotalWatt = doc["MAH"];
-      Serial.println("mAh : " + String(TotalWatt));
+      Total_mA = doc["MAH"];
+      Serial.println("mAh : " + String(Total_mA));
       chgTimes = doc["CHG"];
       Serial.println("chgTimes : " + String(chgTimes));
-      Servo_i= doc["SRV"];
+    //  Servo_i= doc["SRV"];
       Serial.println("Servo_i : " + String(Servo_i));
       Serial.println("==========================================================");
     }
@@ -2135,7 +2126,7 @@ void storeSettings()
 
     StaticJsonDocument<300> js;
     js["BFL"] = BinFull;
-    js["MAH"] = TotalWatt;
+    js["MAH"] = Total_mA;
     js["CHG"] = chgTimes;
     js["SRV"] =Servo_i;
     File f = SPIFFS.open("/Settings", "w");
@@ -2194,17 +2185,21 @@ void getGr()
 }
 int dist1 =0;
 void CalculateCoverRange()
-{
-      for (int i = 0; i < 5 ; i++)
+{ 
+  check_battery();
+  if (   I2cbusy==1) return;
+      I2cbusy=1;
+      for (int i = 0; i < 2 ; i++)
       {
         dist1 = Cover_sensor.readRangeSingleMillimeters();
+       
         delay(50);
       //  if ( dist1 >0)
         {
             CoverRange.add(dist1); 
-            if (CoverRange.size() > 5)
+            if (CoverRange.size() > 2)
               CoverRange.remove(0);
-          if (CoverRange.size() == 5)
+          if (CoverRange.size() == 2)
           {
             dist1 =0;
             for (int i = 0; i < CoverRange.size() ; i++)
@@ -2216,6 +2211,7 @@ void CalculateCoverRange()
         }
       }
        Serial.println("Cover is   : " + String(dist1));
+       I2cbusy=0;
 }
 
 int checkClosed=0;
@@ -2396,6 +2392,8 @@ boolean checkTags()
 
 void readNFC()
 {
+  if (   I2cbusy==1) return;
+  I2cbusy=1;
   // Serial.println("Nfc read" );
   if (nfc.tagPresent())
   {
@@ -2419,7 +2417,7 @@ void readNFC()
   {
   }
   delay(50);
-  
+  I2cbusy=0;
 }
 
 void CheckNFC()
@@ -2922,7 +2920,9 @@ void Read_GPS_LatLon()
 long acc_time=0;
 void ReadAccelerometer()
 {
-  if (NewVersion==0) return;
+ 
+  if (NewVersion==0 ||    I2cbusy==1) return;
+  I2cbusy=1;
    // read raw accel/gyro measurements from device
  accelgyro.getMotion6(&ax, &ay, &az, &gx, &gy, &gz);
  accAngleX = (atan(ay / sqrt(pow(ax, 2) + pow(az, 2))) * 180 / PI) - 0.58; // AccErrorX ~(0.58) See the calculate_IMU_error()custom function for more details
@@ -2934,7 +2934,7 @@ void ReadAccelerometer()
     Serial.println("accAngleX:" + String (accAngleX)); 
     readGaslevel();
   }
-  
+  I2cbusy=0;
 }
 void readGaslevel()
 {
@@ -3442,15 +3442,21 @@ void setup(void)
   Cover_sensor.writeReg16Bit(VL6180X::SYSALS__INTEGRATION_PERIOD, 50);
   Cover_sensor.setTimeout(500);
   Cover_sensor.stopContinuous();
-  // in case stopContinuous() triggered a single-shot
-  // measurement, wait for it to complete
-  delay(300);
   // start interleaved continuous mode with period of 100 ms
   Cover_sensor.startInterleavedContinuous(100);
+
+  if (! ina219.begin()) {
+    Serial.println("Failed to find INA219 chip");
+    while (1) { delay(10); }
+  }
+  
+  Serial.println("Measuring voltage and current with INA219 ...");
+  delay(300);
 
   SetAccelerometer();
   nfc.begin();
   getSettings();
+  CalculateCoverRange();
   CalculateCoverRange();
   CalculateCoverRange();
   readGaslevel();
@@ -3472,8 +3478,8 @@ void setup(void)
   Serial.println("NFC Reader Start reading...");
   while (millis() - start_time < 30000 && tagId == "" && Garbagecollection==0)
   {
-    // if ( CoverStatus!=Locker_Closed)
-    CalculateCoverRange();
+   //if ( CoverStatus!=Locker_Closed)
+   // CalculateCoverRange();
     readNFC();
     ReadAccelerometer();
     ProceessAccelerometer();
@@ -3583,7 +3589,9 @@ void setup(void)
     //   delay(10000);
       
     // }
-
+    UnlockByServo();
+    delay(2000);
+    lockByServo();
    if (mustUnlock == 0)
       CheckNFC();
       // test();
@@ -3628,13 +3636,14 @@ void loop()
    
   if (stopWorking == 1)
     return;
+  if (mustUnlock == 1)
+    {
+      unlock(); 
+    }
   ReadAccelerometer();
   ProceessAccelerometer();
   CalculateCoverRange();
-  if (mustUnlock == 1)
-  {
-    unlock(); 
-  }
+ 
   if (Lockstatus == 1 && lc == 0 && System_Tag == 0)
     lc = 1;
   // FIRST READ NFC -
