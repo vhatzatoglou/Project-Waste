@@ -91,7 +91,7 @@ TinyGsm modem(SerialAT);
 #include "helper.cpp"
 #include <ArduinoJson.h>
 #include "ESP32httpUpdate.h"
-#include <Time.h>
+#include <Time.h>-
 #include <WiFi.h>
 #include <HTTPClient.h>
 #include "FS.h"
@@ -126,6 +126,7 @@ int System_Tag = 0;
 byte stopWorking = 0;
 long open_cover_time = millis();
 long start_time = millis();
+long delayTimer=0;
 long start_timeAQ = millis();
 float Working_time = millis();
 float Working_time_connecting = 0;
@@ -530,7 +531,7 @@ void check_battery()
 {
   if (   I2cbusy==1  ||  (Sen2==0)  ) return;
   I2cbusy=1;
-  if (millis() - battery_time > 1000 &&   I2cbusy==0 )
+  if (millis() - battery_time > 1000  )
   {
       I2cbusy=1;
       Serial.print("Current:       "); Serial.print(current_mA); Serial.println(" mA");
@@ -538,13 +539,13 @@ void check_battery()
       current_mA = ina219.getCurrent_mA();
        if (current_mA!=INFINITY)
       Total_mA=Total_mA+current_mA;
-      if (current_mA>1500)
+      if (current_mA>2000)
       UnlockByServo();
       double bat=(30000*3600-Total_mA)*100/(30000*3600);
       Serial.println("Battery % :" + String(bat));
       batterylevel=bat;
       battery_time=millis();
-      I2cbusy=0;
+      
   }
   I2cbusy=0;
 
@@ -811,54 +812,15 @@ void modem_on()
   String res;
   SerialAT.begin(UART_BAUD, SERIAL_8N1, PIN_RX, PIN_TX);
   Serial.println("========INIT========");
-  
+  CalculateCoverRange();
   if (!modem.init())
   {
     // modemRestart();
     delay(2000);
     Serial.println("Failed to restart modem, attempting to continue without restarting");
   }
-
-  // Serial.println("========SIMCOMATI======");
-  // modem.sendAT("+SIMCOMATI");
-  // modem.waitResponse(1000L, res);
-  // res.replace(GSM_NL "OK" GSM_NL, "");
-  // Serial.println(res);
-  // res = "";
-  // Serial.println("=======================");
-
-  // Serial.println("=====Preferred mode selection=====");
-  // modem.sendAT("+CNMP?");
-  // if (modem.waitResponse(1000L, res) == 1)
-  // {
-  //   res.replace(GSM_NL "OK" GSM_NL, "");
-  //   Serial.println(res);
-  // }
-  // res = "";
-  Serial.println("=======================");
-
-  // Serial.println("=====Preferred selection between CAT-M and NB-IoT=====");
-  // modem.sendAT("+CMNB?");
-  // if (modem.waitResponse(1000L, res) == 1)
-  // {
-  //   res.replace(GSM_NL "OK" GSM_NL, "");
-  //   Serial.println(res);
-  // }
-  // res = "";
-  // Serial.println("=======================");
-
-  // String name = modem.getModemName();
-  // Serial.println("Modem Name: " + name);
-
-  // String modemInfo = modem.getModemInfo();
-  // Serial.println("Modem Info: " + modemInfo);
-
-  // // Unlock your SIM card with a PIN if needed
-  // if (GSM_PIN && modem.getSimStatus() != 3)
-  // {
-  //   modem.simUnlock(GSM_PIN);
-  // }
-
+  CalculateCoverRange();
+ 
 // for (int i = 0; i < 2; i++)
   {
     // uint8_t network[] = {
@@ -870,11 +832,11 @@ void modem_on()
     // Serial.printf("Try %d method\n", network[i]);
     modem.setNetworkMode(13);
     //delay(3000);
-     
+    
     int tryCount = 60;
     while (tryCount>0)
     {
-     
+      check_battery();
       if (scaleIsConnected == 0)
       if (Serial1.available())
       Serial1.readStringUntil('\n');
@@ -885,11 +847,13 @@ void modem_on()
       Serial.print("isNetworkConnected: ");
       isConnected = modem.isNetworkConnected();
       Serial.println(isConnected ? "CONNECT" : "NO CONNECT");
-        Serial.println("tryCount" +  String(tryCount));
+      Serial.println("tryCount" +  String(tryCount));
+      CalculateCoverRange();
+      if ( CoverStatus==Locker_Closed  && Lockstatus==1)  lockByServo();
       if (isConnected)
       {
         break;
-        
+
       }
        tryCount--;
       delay(1000);
@@ -990,7 +954,7 @@ void getRTC()
   hasModemSIM = 1;
   if (hasModemSIM > 0) //&& WiFi.status()!= WL_CONNECTED
   {
-
+    CheckCoverSTatus();
     {
       //delay(1000);
       SerialAT.println("AT+CNTPCID=1");
@@ -998,10 +962,10 @@ void getRTC()
       SerialAT.println("AT+CNTP=\"time1.google.com\",0");
       updateSerial();
       SerialAT.println("AT+CNTP");
-      delay(200);
+      delay(100);
       updateSerial();
-      initCLTS();
-      delay(200);
+     // initCLTS();
+    //  delay(200);
       Serial.println("CCLK :");
       SerialAT.println("AT+CCLK?");
 
@@ -1356,25 +1320,29 @@ void blinkGreen(void *pvParameters)
         readscale1();
 
       }
-     if (millis() - start_timeAQ > 200)
+     if (millis() - start_timeAQ > 2000 && gf==0) 
      {
-     // AirPollution();
-      start_timeAQ=millis();
+       AirPollution();
+       start_timeAQ=millis();
      }
     }
-    //if (tagId != "")
+    check_battery();
+    if ((tagId != "" || Garbagecollection==1) &&  millis()- delayTimer>500)
     {
-      ReadAccelerometer();
-      CalculateCoverRange();
+       delayTimer=millis();
+       CalculateCoverRange();
+       ReadAccelerometer();
+       ProceessAccelerometer();
+     
     }
     if (scaleIsConnected == 0)
     if (Serial1.available())
     Serial1.readStringUntil('\n');
    //Serial.println("Weigh Readings : " + Serial1.readStringUntil('\n')); 
    
-  }
   
-  if ( CoverStatus==Locker_Closed  && p ==3)  lockByServo();
+  
+ 
 
   if (CoverStatus==Locker_Closed  && (TagPresent == 0) || we == 1 )
   {
@@ -1403,6 +1371,9 @@ void blinkGreen(void *pvParameters)
     digitalWrite(GREEN_PIN, LOW);
     if ( wa >= 6 || Garbagecollection == 1)  modem_on();
   }
+  if ( CoverStatus==Locker_Closed && Lockstatus == 1)
+  lockByServo();
+}
 }
 
 boolean ScanAddress(int address)
@@ -2313,7 +2284,7 @@ void getSettings()
       BinFull = doc["BFL"];
       Serial.println("BinFull : " + String(BinFull));
       Total_mA = doc["MAH"];
-      if (Total_mA==INFINITY)
+      if (Total_mA==INFINITY || Total_mA!=Total_mA )
       Total_mA=0;
       Serial.println("mAh : " + String(Total_mA));
       chgTimes = doc["CHG"];
@@ -2419,29 +2390,42 @@ void getGr()
 int dist1 =0;
 void CalculateCoverRange()
 { 
-   check_battery();
+   //check_battery();
   if (   I2cbusy==1  ||  (Sen1==0)  ) return;
       I2cbusy=1;
-      for (int i = 0; i < 2 ; i++)
+     // for (int i = 0; i < 2 ; i++)
       { 
         dist1 = Cover_sensor.readRangeSingleMillimeters();
-       
+        CheckCoverSTatus();
+       if (dist1==255)
+       {
+        Serial.println("Restart Cover Sensor");
+        Cover_sensor.init();
+        Cover_sensor.configureDefault();
+        Cover_sensor.writeReg(VL6180X::SYSRANGE__MAX_CONVERGENCE_TIME, 30);
+        Cover_sensor.writeReg16Bit(VL6180X::SYSALS__INTEGRATION_PERIOD, 50);
+        Cover_sensor.setTimeout(1000);
+        Cover_sensor.stopContinuous();
+        delay(300);
+        // start interleaved continuous mode with period of 100 ms
+        Cover_sensor.startInterleavedContinuous(100);
+       }
         delay(50);
-       if ( dist1 >0)
-        {
-            CoverRange.add(dist1); 
-            if (CoverRange.size() > 2)
-              CoverRange.remove(0);
-          if (CoverRange.size() == 2)
-          {
-            dist1 =0;
-            for (int i = 0; i < CoverRange.size() ; i++)
-                dist1 =dist1+ CoverRange.get(i);
-            dist1=dist1/CoverRange.size() ;
-            CoverRange.clear();
-            CheckCoverSTatus();
-          }
-        }
+      //  if ( dist1 >0)
+      //   {
+      //       CoverRange.add(dist1); 
+      //       if (CoverRange.size() > 2)
+      //         CoverRange.remove(0);
+      //     if (CoverRange.size() == 2)
+      //     {
+      //       dist1 =0;
+      //       for (int i = 0; i < CoverRange.size() ; i++)
+      //           dist1 =dist1+ CoverRange.get(i);
+      //       dist1=dist1/CoverRange.size() ;
+      //       CoverRange.clear();
+      //       CheckCoverSTatus();
+      //     }
+      //   }
       }
        Serial.println("Cover is   : " + String(dist1));
        I2cbusy=0;
@@ -2453,7 +2437,7 @@ int CheckCoverSTatus()
 {
     
   // Serial.println("**** Check Cover****");
-  if (dist1<20 &&  CoverStatus!=Locker_Closed)
+  if (dist1<15 &&  CoverStatus!=Locker_Closed)
     { 
        Serial.println("Cover is  Closed : " + String(dist1));
        checkClosed++;
@@ -2462,6 +2446,8 @@ int CheckCoverSTatus()
          CoverStatus=Locker_Closed;
           checkClosed=0;
           checkOpened=0;
+          if ( CoverStatus==Locker_Closed && Lockstatus == 1)
+          lockByServo();
        }
 
        return CoverStatus;
@@ -2475,6 +2461,7 @@ int CheckCoverSTatus()
           CoverStatus=Locker_Opened;
            checkOpened=0;
            checkClosed=0;
+           checkCoverBin();
        }
      return   CoverStatus;  
    }
@@ -2515,11 +2502,8 @@ boolean checkFullBin()
     return false;
 }
 
-void unlock()
+void checkCoverBin()
 {
-   UnlockByServo(); 
- 
-  //bin is opened
   if (CoverStatus ==Locker_Opened)
   {
     pinMode(LOCKER_PIN, INPUT);
@@ -2533,6 +2517,12 @@ void unlock()
     TagPresent=0;
     start_time = millis();
   }
+}
+void unlock()
+{
+   UnlockByServo(); 
+   CalculateCoverRange();
+
 }
 
 boolean checkTags()
@@ -2813,9 +2803,11 @@ void transmit_data()
   Working_time = millis() - Working_time;
   if (gr >= 0) //   && enablePost==1
   {
+    modem_on();
     while  ( isConnected==false && gf<60)
     {
      delay(500);
+     CheckCoverSTatus();
      gf++;
     }
     gf=0;
@@ -3203,7 +3195,7 @@ void ReadAccelerometer()
     acc_time=millis();
     Serial.println("accAngleY:"   + String (accAngleY)); 
     Serial.println("accAngleX:" + String (accAngleX)); 
-    readGaslevel();
+    //readGaslevel();
   }
   I2cbusy=0;
 }
@@ -3274,7 +3266,7 @@ val=(val*100/4096);
 int violationTime=0;
 void ProceessAccelerometer()
 {
-  //if (NewVersion==0) 
+  if (NewVersion==0 || Sen5==0) return;
   return;
   if (abs(accAngleY)<60.0  &&  violationTime==0 &&  binOrientation==Bin_Up )
          { 
@@ -3857,6 +3849,7 @@ Serial.println("******* CheckDevices  **********");
 
 void setup(void)
 {
+  Green();
   Wire.begin(); 
   //******* Open Scale to calibrate  **********
   
@@ -3868,7 +3861,7 @@ void setup(void)
  // openWifi();
    
   //********************************************
-  
+   
   Working_time = millis();
   pinMode(DONE_PIN, OUTPUT);
   digitalWrite(DONE_PIN, LOW);
@@ -3878,35 +3871,33 @@ void setup(void)
   pinMode(LED_PIN, OUTPUT);
   digitalWrite(LED_PIN, LOW);
   myservo.attach(SERVO_PIN); 
-  initSen55(); 
   
   Cover_sensor.init();
   Cover_sensor.configureDefault();
   Cover_sensor.writeReg(VL6180X::SYSRANGE__MAX_CONVERGENCE_TIME, 30);
   Cover_sensor.writeReg16Bit(VL6180X::SYSALS__INTEGRATION_PERIOD, 50);
-  Cover_sensor.setTimeout(500);
+  Cover_sensor.writeReg16Bit(VL6180X::INTERLEAVED_MODE__ENABLE,0);
+  Cover_sensor.setTimeout(1000);
   Cover_sensor.stopContinuous();
   delay(300);
   // start interleaved continuous mode with period of 100 ms
-  Cover_sensor.startInterleavedContinuous(100);
-   
+  Cover_sensor.startInterleavedContinuous(500);
+  CalculateCoverRange();
+  CalculateCoverRange();
+  CalculateCoverRange();
   if (! ina219.begin()) {
     Serial.println("Failed to find INA219 chip");
    
   }
   Serial.println("Measuring voltage and current with INA219 ...");
-   
+  initSen55(); 
   SetAccelerometer();
   getSettings();
-  CalculateCoverRange();
-  CalculateCoverRange();
-  CalculateCoverRange();
-  readGaslevel();
-  ReadAccelerometer();
   CheckDevices();
+  //readGaslevel();
   AirPollution();
+  
 
- 
   xTaskCreatePinnedToCore(
       blinkGreen, /* Task function. */
       "Task1",    /* name of task. */
@@ -3923,9 +3914,9 @@ void setup(void)
   {
    //if ( CoverStatus!=Locker_Closed)
    // CalculateCoverRange();
-    readNFC();
-   // ReadAccelerometer();
-   //ProceessAccelerometer();
+   readNFC();
+   ReadAccelerometer();
+   ProceessAccelerometer();
   }
   restore_Tags();
   if (!readTaglist())
@@ -4012,6 +4003,8 @@ void ScaleCal()
         }
         {
           weightA = weightA / WeightList.size();
+          if (weightA!=weightA)
+          weightA=0;
           WeightList.clear();
           Serial.println("Weight Offset --> " + String(weightA));
         }
@@ -4051,15 +4044,15 @@ void loop()
     CloseScaleBin();
     Working_time = millis() - Working_time;
     Serial.println("SYSTEM POWER OFF DUE NO TAG DETECTION");
-    if (Lockstatus == 1 )
-      lockByServo();
+   // if (Lockstatus == 1 )
+    lockByServo();
     beep(2);
     done();
   }
 
   
   //δεν ανοιξε ο κάδος λόγω προβλήματος ή  άλλου θέματος ή autostart
-  if (millis() - start_time > 15000 && System_Tag == 0)
+  if (millis() - start_time > 20000 && System_Tag == 0)
     if (CoverStatus==Locker_Closed  && lc == 0 && tagId != "")
     {
       CloseScaleBin();
@@ -4083,7 +4076,7 @@ void loop()
         Serial.println(s);
         Datalist.add(s);
         gr++;
-        storeGr();
+        storeGr(); 
         store_Datalist(gr);
         transmit_data();
         beep(1);
