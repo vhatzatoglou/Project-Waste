@@ -105,9 +105,8 @@ TinyGsm modem(SerialAT);
 //#include <ADXL345.h>
 #include "AES.h"
 #include "Base64.h"
-#include <VL6180X.h>
-
-VL6180X Cover_sensor;
+#include <DFRobot_VL6180X.h>
+DFRobot_VL6180X Cover_sensor;
 AES aes;
 
 // Our AES key. Same in NodeJS but in hex bytes
@@ -117,6 +116,7 @@ TaskHandle_t Task1;
 TaskHandle_t Task2;
 int Sen1=0,Sen2=0,Sen3=0,Sen4=0,Sen5=0,Sen6=0,Sen7=0;
 String str, CCID;
+byte initSen55_=0;
 int i;
 int we;
 int gf=0;
@@ -129,6 +129,7 @@ long start_time = millis();
 long delayTimer=0;
 long start_timeAQ = millis();
 float Working_time = millis();
+byte transmitData=0;
 float Working_time_connecting = 0;
 float Working_time_posting = 0;
 bool isConnected = false;
@@ -238,7 +239,7 @@ int binOrientation=0;
 #define PWR_PIN 4
 #define LED_PIN 12
 //INPUT
-#define STATUSSCALE_PIN 34 //INPUT LOCKER
+//#define STATUSSCALE_PIN 34 //INPUT LOCKER
 // #define SENSOR1 32         //INPUT
 // #define SENSOR2 35         //INPUT
 //INPUT I2C
@@ -292,6 +293,7 @@ String URL;
 String f;
 int wa = 0;
 int scaleIsConnected = 0;
+byte ScaleStartWeighting=0;
 long lock_time = 0;
 int step, Lockstatus = 0,TagPresent=0;
 byte scale_status = 0;
@@ -470,7 +472,7 @@ void UnlockByServo()
   if (ultime == 0)
   {
     Serial.println("Unlocking");
-    beepDelay(500);
+    
      ultime++; 
     if (ultime >0)
     while (Servo_i>10)
@@ -480,6 +482,7 @@ void UnlockByServo()
       delay(15);        //delay for smoothness
       ultime++;
     }
+    beepDelay(250);
   }
  // storeSettings();
  
@@ -530,25 +533,28 @@ float getVPP()
 void check_battery()
 {
   if (   I2cbusy==1  ||  (Sen2==0)  ) return;
-  I2cbusy=1;
+ 
   if (millis() - battery_time > 1000  )
   {
+      battery_time=millis();
       I2cbusy=1;
-      Serial.print("Current:       "); Serial.print(current_mA); Serial.println(" mA");
-      Serial.print("Power:         "); Serial.print(power_mW); Serial.println(" mW");
       current_mA = ina219.getCurrent_mA();
+      Serial.print("Current:       "); Serial.print(current_mA); Serial.println(" mA");
+      
+      
+      I2cbusy=0;
+      if (!isnan(current_mA)) return;
+      if (current_mA ==current_mA)
        if (current_mA!=INFINITY)
       Total_mA=Total_mA+current_mA;
-      if (current_mA>2000)
+       
+      if (current_mA>2000 )
       UnlockByServo();
       double bat=(30000*3600-Total_mA)*100/(30000*3600);
       Serial.println("Battery % :" + String(bat));
       batterylevel=bat;
-      battery_time=millis();
-      
+  
   }
-  I2cbusy=0;
-
 
 }
 
@@ -598,6 +604,7 @@ void modemPowerOn()
   digitalWrite(PWR_PIN, HIGH); 
   delay(500); 
   digitalWrite(PWR_PIN, LOW);
+ 
 }
 
 void modemPowerOff()
@@ -644,12 +651,13 @@ void modemRestart()
 }
 void modem_on1()
 {
+  if (isConnected) return;
   // Set-up modem  power pin
   Serial.println("\nStarting Up Modem...");
   pinMode(LED_PIN, OUTPUT);
   //digitalWrite(LED_PIN, HIGH);
   Working_time_connecting = millis();
-  modemPowerOn();
+  modemRestart();
   SerialAT.begin(UART_BAUD, SERIAL_8N1, PIN_RX, PIN_TX);
   String res;
 
@@ -761,9 +769,9 @@ void modem_on1()
   Serial.println("Connecting to: " + String(apn));
   if (!modem.gprsConnect(apn, gprsUser, gprsPass))
   {
-    delay(10000);
-    Working_time_connecting = 0;
-    return;
+      delay(3000);
+    // Working_time_connecting = 0;
+    // return;
   }
 
   Serial.print("GPRS status: ");
@@ -781,25 +789,25 @@ void modem_on1()
   String ccid = modem.getSimCCID();
   Serial.println("CCID: " + ccid);
 
-  String imei = modem.getIMEI();
-  Serial.println("IMEI: " + imei);
+  // String imei = modem.getIMEI();
+  // Serial.println("IMEI: " + imei);
 
-  String cop = modem.getOperator();
-  Serial.println("Operator: " + cop);
+  // String cop = modem.getOperator();
+  // Serial.println("Operator: " + cop);
 
-  IPAddress local = modem.localIP();
-  Serial.println("Local IP: " + String(local));
+  // IPAddress local = modem.localIP();
+  // Serial.println("Local IP: " + String(local));
 
-  int csq = modem.getSignalQuality();
-  Serial.println("Signal quality: " + String(csq));
+  // int csq = modem.getSignalQuality();
+  // Serial.println("Signal quality: " + String(csq));
 
-  SerialAT.println("AT+CPSI?"); //Get connection type and band
-  delay(500);
-  if (SerialAT.available())
-  {
-    String r = SerialAT.readString();
-    Serial.println(r);
-  }
+  // SerialAT.println("AT+CPSI?"); //Get connection type and band
+  // delay(500);
+  // if (SerialAT.available())
+  // {
+  //   String r = SerialAT.readString();
+  //   Serial.println(r);
+  // }
 
    
 }
@@ -808,18 +816,19 @@ void modem_on()
 {
   
   if (isConnected) return;
-  modem.init();
+ //modem.init();
+//Serial.println("========MODEM INIT========");
   String res;
   SerialAT.begin(UART_BAUD, SERIAL_8N1, PIN_RX, PIN_TX);
-  Serial.println("========INIT========");
-  CalculateCoverRange();
+  
+  //CalculateCoverRange();
   if (!modem.init())
   {
     // modemRestart();
     delay(2000);
     Serial.println("Failed to restart modem, attempting to continue without restarting");
   }
-  CalculateCoverRange();
+ // CalculateCoverRange();
  
 // for (int i = 0; i < 2; i++)
   {
@@ -837,9 +846,9 @@ void modem_on()
     while (tryCount>0)
     {
       check_battery();
-      if (scaleIsConnected == 0)
-      if (Serial1.available())
-      Serial1.readStringUntil('\n');
+      // if (scaleIsConnected == 0)
+      // if (Serial1.available())
+      // Serial1.readStringUntil('\n');
       int16_t signal = modem.getSignalQuality();
       Serial.print("Signal: ");
       Serial.print(signal);
@@ -848,7 +857,7 @@ void modem_on()
       isConnected = modem.isNetworkConnected();
       Serial.println(isConnected ? "CONNECT" : "NO CONNECT");
       Serial.println("tryCount" +  String(tryCount));
-      CalculateCoverRange();
+     // CalculateCoverRange();
       if ( CoverStatus==Locker_Closed  && Lockstatus==1)  lockByServo();
       if (isConnected)
       {
@@ -886,7 +895,7 @@ void modem_on()
   Serial.println("Connecting to: " + String(apn));
   if (!modem.gprsConnect(apn, gprsUser, gprsPass))
   {
-    delay(1000);
+    delay(2000);
     Working_time_connecting = 0;
     return;
   }
@@ -909,8 +918,8 @@ void modem_on()
   // String imei = modem.getIMEI();
   // Serial.println("IMEI: " + imei);
 
-  // String cop = modem.getOperator();
-  // Serial.println("Operator: " + cop);
+  String cop = modem.getOperator();
+  Serial.println("Operator: " + cop);
 
   // IPAddress local = modem.localIP();
   // Serial.println("Local IP: " + String(local));
@@ -950,7 +959,7 @@ void getRTC()
   String DAY_, MONTH_, YEAR_, Seconds_, Hours_, Minutes_;
   // if ((millis()-rtcm)<60000)
   // return;
-  Serial.println("getFreeHeap " + String(ESP.getFreeHeap()));
+  
   hasModemSIM = 1;
   if (hasModemSIM > 0) //&& WiFi.status()!= WL_CONNECTED
   {
@@ -961,9 +970,9 @@ void getRTC()
       updateSerial();
       SerialAT.println("AT+CNTP=\"time1.google.com\",0");
       updateSerial();
-      SerialAT.println("AT+CNTP");
-      delay(100);
-      updateSerial();
+      //SerialAT.println("AT+CNTP");
+      delay(200);
+      //updateSerial();
      // initCLTS();
     //  delay(200);
       Serial.println("CCLK :");
@@ -1045,11 +1054,11 @@ String updateSerial()
   int64_t timestamp1 = millis();
   while (SerialAT.available())
   {
-
+    delay(10);
     str += SerialAT.readString();
     str.trim();
-
     Serial.println(str); //Forward what Software Serial received to Serial Port
+
   }
   return str;
 }
@@ -1090,9 +1099,9 @@ void beep(int times)
 
     pinMode(ALARM_PIN, OUTPUT);
     digitalWrite(ALARM_PIN, HIGH);
-    delay(500);
+    delay(100);
     pinMode(ALARM_PIN, INPUT);
-    delay(1000);
+    delay(500);
   }
 }
 
@@ -1313,35 +1322,46 @@ void blinkGreen(void *pvParameters)
     
    
    //if (CoverStatus ==Locker_Closed )
-    
+     
     {
      if (millis() - start_time > 8000 && wa < 6)
       {
         readscale1();
 
       }
-     if (millis() - start_timeAQ > 2000 && gf==0) 
+    if (initSen55_==1 && wa >= 6  && millis()-start_timeAQ>2000 ) 
      {
        AirPollution();
        start_timeAQ=millis();
      }
     }
+   if ( StartWeighting() && ScaleStartWeighting==0 && wa >= 6 && tagId!="")
+   {
+        ScaleStartWeighting=1;
+        Serial.println("**** Scale Start Weighting ****");
+   }
+
     check_battery();
-    if ((tagId != "" || Garbagecollection==1) &&  millis()- delayTimer>500)
+    if (( (tagId!="") || Garbagecollection==1) &&  millis()- delayTimer>2000 )
     {
        delayTimer=millis();
        CalculateCoverRange();
-       ReadAccelerometer();
-       ProceessAccelerometer();
-     
+     }
+
+    if (tagId=="" && transmitData==0 )
+    {
+        
+     //  CalculateCoverRange();
+       ReadAccelerometer();     
     }
-    if (scaleIsConnected == 0)
-    if (Serial1.available())
-    Serial1.readStringUntil('\n');
+
+    // if (scaleIsConnected == 0)
+    // if (Serial1.available())
+    // Serial1.readStringUntil('\n');
    //Serial.println("Weigh Readings : " + Serial1.readStringUntil('\n')); 
    
   
-  
+  /// if ( wa >= 6  &&  we == 1)  modem_on();
  
 
   if (CoverStatus==Locker_Closed  && (TagPresent == 0) || we == 1 )
@@ -1369,7 +1389,8 @@ void blinkGreen(void *pvParameters)
   {
     pinMode(GREEN_PIN, OUTPUT);
     digitalWrite(GREEN_PIN, LOW);
-    if ( wa >= 6 || Garbagecollection == 1)  modem_on();
+     
+   // if  (Garbagecollection == 1) modem_on();
   }
   if ( CoverStatus==Locker_Closed && Lockstatus == 1)
   lockByServo();
@@ -1939,7 +1960,7 @@ void PutDataBuff()
   {
     getSettings();
     s = "";
-    Serial.println("getFreeHeap " + String(ESP.getFreeHeap()));
+  
     //getRTC();
     StaticJsonDocument<200> doc;
 
@@ -2085,21 +2106,21 @@ void readscale()
    
     weight = str.toDouble();
     WeightList.add(weight);
-    if (WeightList.size() > 30)
+    if (WeightList.size() > 31)
       WeightList.remove(0);
-   // Serial.println("Weight:" + str);
+    //Serial.println("Weight:" + str);
   
   // if (checkWeight() == true && weight ==0.0000) //test
-  // if (millis() - start_time > 5000 && digitalRead(STATUSSCALE_PIN) == Locker_Closed) //change
+  // if (millis() - start_time > 5000 && CoverStatus == Locker_Closed) //change
   // {
   //    weightF = 10;
   //    if (we == 0)
   //    PutDataBuff();
   //    we = 1;
   // }
-  if (checkWeight() == true) //&& digitalRead(STATUSSCALE_PIN) == Locker_Closed
+  if (checkWeight() == true) //&& CoverStatus == Locker_Closed
   {
-    if (weightA == weightA && (weight+0.9)>weightA)
+    if (weightA == weightA && (weight)>(weightA+0.9))
       weightF = abs(abs(weight) - abs(weightA));
     else
       weightF = abs(weight);
@@ -2124,6 +2145,27 @@ void readscale()
   }
    
 }
+
+boolean StartWeighting()
+{
+   String str;
+  if (Serial1.available())
+  {
+     
+    str += Serial1.readStringUntil('\n');
+    str.trim();
+    str.replace("kg", "");
+    str.replace("+", "");
+    str.replace("wn", "");
+    weight = str.toDouble();
+ 
+    if (weightA == weightA && weight>0 && weight>(weightA+0.8))
+     return true;
+  }
+   return false;
+  }
+   
+
 
 void readscale1()
 {
@@ -2392,41 +2434,14 @@ void CalculateCoverRange()
 { 
    //check_battery();
   if (   I2cbusy==1  ||  (Sen1==0)  ) return;
-      I2cbusy=1;
-     // for (int i = 0; i < 2 ; i++)
-      { 
-        dist1 = Cover_sensor.readRangeSingleMillimeters();
+        I2cbusy=1;
+    
+         
+        dist1 = Cover_sensor.rangePollMeasurement();
+        // dist1 =dist1 + Cover_sensor.rangePollMeasurement();
+        // dist1=dist1/2;
         CheckCoverSTatus();
-       if (dist1==255)
-       {
-        Serial.println("Restart Cover Sensor");
-        Cover_sensor.init();
-        Cover_sensor.configureDefault();
-        Cover_sensor.writeReg(VL6180X::SYSRANGE__MAX_CONVERGENCE_TIME, 30);
-        Cover_sensor.writeReg16Bit(VL6180X::SYSALS__INTEGRATION_PERIOD, 50);
-        Cover_sensor.setTimeout(1000);
-        Cover_sensor.stopContinuous();
-        delay(300);
-        // start interleaved continuous mode with period of 100 ms
-        Cover_sensor.startInterleavedContinuous(100);
-       }
-        delay(50);
-      //  if ( dist1 >0)
-      //   {
-      //       CoverRange.add(dist1); 
-      //       if (CoverRange.size() > 2)
-      //         CoverRange.remove(0);
-      //     if (CoverRange.size() == 2)
-      //     {
-      //       dist1 =0;
-      //       for (int i = 0; i < CoverRange.size() ; i++)
-      //           dist1 =dist1+ CoverRange.get(i);
-      //       dist1=dist1/CoverRange.size() ;
-      //       CoverRange.clear();
-      //       CheckCoverSTatus();
-      //     }
-      //   }
-      }
+   
        Serial.println("Cover is   : " + String(dist1));
        I2cbusy=0;
 }
@@ -2441,12 +2456,12 @@ int CheckCoverSTatus()
     { 
        Serial.println("Cover is  Closed : " + String(dist1));
        checkClosed++;
-       if (checkClosed==4)
+       if (checkClosed==2)
        {
          CoverStatus=Locker_Closed;
           checkClosed=0;
           checkOpened=0;
-          if ( CoverStatus==Locker_Closed && Lockstatus == 1)
+          if ( CoverStatus==Locker_Closed  &&  ( Garbagecollection == 0) && Lockstatus == 1)
           lockByServo();
        }
 
@@ -2474,29 +2489,29 @@ boolean checkFullBin()
 {
   if (   I2cbusy==1 || Sen3==0 || Sen4==0)  return false;
   I2cbusy=1;
-  if (Sen3==0) 
+   
    int dist1 = get_distance(Left_Range);//Left
    int dist2 = get_distance(Right_Range);//Right
-   for (int i = 0; i < 20; i++)
+   for (int i = 0; i < 10; i++)
    {
     dist1 =dist1+ get_distance(Left_Range);
     dist2 =dist2+ get_distance(Right_Range);
     delay(50);
    }
-   dist1=dist1/21;
-   dist2=dist2/21;
+   dist1=dist1/11;
+   dist2=dist2/11;
   Serial.println("**** CheckFullBin ****");
-  if (dist1>90)
+  if (dist1>160)
     Serial.println("SENSOR1 EMPTY  : " + String(dist1));
   else
     Serial.println("SENSOR1 FULL : "  + String(dist1));
 
-  if (dist2>90)
+  if (dist2>160)
      Serial.println("SENSOR2 EMPTY : "  + String(dist2));
   else
     Serial.println("SENSOR2 FULL : "  + String(dist2));
     I2cbusy=0;
-  if ( dist1<90 &&  dist2<90)
+  if ( dist1<150 &&  dist2<150 &&  dist1>50 &&  dist2>50)
     return true;
   else
     return false;
@@ -2515,7 +2530,7 @@ void checkCoverBin()
     Lockstatus = 1;
     mustUnlock = 0;
     TagPresent=0;
-    start_time = millis();
+   // start_time = millis();
   }
 }
 void unlock()
@@ -2649,9 +2664,9 @@ void readNFC()
 void CheckNFC()
 {
   // Serial.println("Nfc read" );
-  if (tagId != "" &&  mustUnlock == 0)
+  if (tagId != "" && tagId1!=tagId &&  mustUnlock == 0)
   {
-      CalculateCoverRange();
+     // CalculateCoverRange();
  
     {
       if (checkTags())
@@ -2727,7 +2742,7 @@ void CheckNFC()
 
             //Green();
             // unlock();
-            Serial.println("Please Wait Unlocking Bin");
+           // Serial.println("Please Wait Unlocking Bin");
             return;
           }
         }
@@ -2741,8 +2756,9 @@ void CheckNFC()
 
 void done()
 {
-
+  
   stopWorking = 1;
+  pinMode(LED_PIN, INPUT);
   Serial.println("Working_time:" + String((float)((float)Working_time / 10000.00)));
   Serial.println("Working_time_connecting:" + String((float)((float)Working_time_connecting / 10000.00)));
   Serial.println("Working_time_posting:" + String((float)((float)Working_time_posting / 10000.00)));
@@ -2803,6 +2819,7 @@ void transmit_data()
   Working_time = millis() - Working_time;
   if (gr >= 0) //   && enablePost==1
   {
+    transmitData=1;
     modem_on();
     while  ( isConnected==false && gf<60)
     {
@@ -3157,7 +3174,7 @@ void SetAccelerometer()
 void Read_GPS_LatLon()
 {
   
-    modem_on();
+    modem_on1();
     if (modem.isGprsConnected())
     {
     getRTC();
@@ -3165,15 +3182,16 @@ void Read_GPS_LatLon()
     Serial.println("Start positioning . Make sure to locate outdoors.");
     Serial.println("The blue indicator light flashes to indicate positioning.");
     int tries=0;
-    while (1 && tries<350) {
+    while (1 && tries<300) {
         if (modem.getGPS(&lat, &lon)) {
             Serial.println("The location has been locked, the latitude and longitude are:");
             Serial.print("latitude:"); Serial.println(String(lat,8));
             Serial.print("longitude:"); Serial.println(String(lon,8));
-            tries++;
             break;
         }
+        tries++;
         digitalWrite(LED_PIN, !digitalRead(LED_PIN));
+        Serial.println("The blue indicator light flashes to indicate positioning.");
         delay(1000);
     }
 
@@ -3184,25 +3202,30 @@ long acc_time=0;
 void ReadAccelerometer()
 {
  
-  if (NewVersion==0 ||    I2cbusy==1 || Sen5==0) return;
-  I2cbusy=1;
+  if (NewVersion==0 ||    I2cbusy==1 || Sen5==0 ||  transmitData==1 )
+   return;
+   
    // read raw accel/gyro measurements from device
- accelgyro.getMotion6(&ax, &ay, &az, &gx, &gy, &gz);
- accAngleX = (atan(ay / sqrt(pow(ax, 2) + pow(az, 2))) * 180 / PI) - 0.58; // AccErrorX ~(0.58) See the calculate_IMU_error()custom function for more details
- accAngleY = (atan(-1 * ax / sqrt(pow(ay, 2) + pow(az, 2))) * 180 / PI) + 1.58; // AccErrorY ~(-1.58)
- while (millis() - acc_time >5000 )
+  
+ if (millis() - acc_time >3000 )
   {
+    I2cbusy=1;
+    accelgyro.getMotion6(&ax, &ay, &az, &gx, &gy, &gz);
+    accAngleX = (atan(ay / sqrt(pow(ax, 2) + pow(az, 2))) * 180 / PI) - 0.58; // AccErrorX ~(0.58) See the calculate_IMU_error()custom function for more details
+    accAngleY = (atan(-1 * ax / sqrt(pow(ay, 2) + pow(az, 2))) * 180 / PI) + 1.58; // AccErrorY ~(-1.58)
     acc_time=millis();
     Serial.println("accAngleY:"   + String (accAngleY)); 
     Serial.println("accAngleX:" + String (accAngleX)); 
+    I2cbusy=0;
     //readGaslevel();
+    ProceessAccelerometer();
   }
-  I2cbusy=0;
+   
 }
 
 
 void AirPollution() {
-  if (   I2cbusy==1 ||   (Sen7==0) ) return;
+  if (   I2cbusy==1 ||   (Sen7==0) ||  transmitData==1  ) return;
   I2cbusy=1;
   error = sen5x.readMeasuredValues(
       massConcentrationPm1p0, massConcentrationPm2p5, massConcentrationPm4p0,
@@ -3581,7 +3604,9 @@ boolean scanWifi(String s="")
   
   APs="";
   openWifi();
-  delay(4000);
+  modem.init();
+  Serial.println("========MODEM INIT========");
+  delay(2000);
   String ssid;
   int32_t rssi;
   uint8_t encryptionType;
@@ -3709,6 +3734,7 @@ void prepare_Wifi_Gps_Data(int binstatus)
  
 boolean checkSamePlace()
 {
+  
   restore_Aps();
   if (APs_!="" )
   {
@@ -3793,7 +3819,8 @@ void printSerialNumber() {
 }
 void initSen55()
 {
-  sen5x.begin(Wire);
+  if (Sen7==0) return;
+  initSen55_=1;
   error = sen5x.deviceReset();
   if (error) {
       Serial.print("Error trying to execute deviceReset(): ");
@@ -3850,74 +3877,57 @@ Serial.println("******* CheckDevices  **********");
 void setup(void)
 {
   Green();
-  Wire.begin(); 
-  //******* Open Scale to calibrate  **********
-  
-  Serial1.begin(9600, SERIAL_8N1, RXSCALE_PIN, TXSCALE_PIN, TXSCALE_PIN); //Scale port
-  Serial.begin(115200);
-  openScaleBin();
-  closeWifi();
 
+  Wire.begin(); 
+  Cover_sensor.begin();
+  //CalculateCoverRange();
+  sen5x.begin(Wire);
+  CheckDevices();
+  
+  //******* Open Scale to calibrate  **********
+  Serial1.begin(9600, SERIAL_8N1, RXSCALE_PIN, TXSCALE_PIN, TXSCALE_PIN); //Scale port
+  
+  openScaleBin();
+  closeWifi(); 
+
+  start_timeAQ=millis()+25000;
+  //delayTimer=millis()+16000; 
+
+  xTaskCreatePinnedToCore(
+    blinkGreen, /* Task function. */
+    "Task1",    /* name of task. */
+    10000,      /* Stack size of task */
+    NULL,       /* parameter of the task */
+    1,          /* priority of the task */
+    &Task1,     /* Task handle to keep track of created task */
+    0);         /* pin task to core 0 */
  // openWifi();
-   
+
+ 
+ SetAccelerometer();
+ Serial.begin(115200);
+  
+ if (! ina219.begin()) {
+  Serial.println("Failed to find INA219 chip");
+}
+Serial.println("NFC Reader Start reading...");
+ if (Sen6==1) 
+ while (millis() - start_time < 15000 && tagId == "" && Garbagecollection==0)
+ {
+  readNFC();
+  ReadAccelerometer();
+ }
+  
   //********************************************
-   
+  //prepare_Wifi_Gps_Data(Violation_Tilt);
   Working_time = millis();
   pinMode(DONE_PIN, OUTPUT);
   digitalWrite(DONE_PIN, LOW);
-  pinMode(STATUSSCALE_PIN, INPUT); //read BIN  cover status
-  // pinMode(SENSOR1, INPUT);
-  // pinMode(SENSOR2, INPUT);
   pinMode(LED_PIN, OUTPUT);
   digitalWrite(LED_PIN, LOW);
-  myservo.attach(SERVO_PIN); 
-  
-  Cover_sensor.init();
-  Cover_sensor.configureDefault();
-  Cover_sensor.writeReg(VL6180X::SYSRANGE__MAX_CONVERGENCE_TIME, 30);
-  Cover_sensor.writeReg16Bit(VL6180X::SYSALS__INTEGRATION_PERIOD, 50);
-  Cover_sensor.writeReg16Bit(VL6180X::INTERLEAVED_MODE__ENABLE,0);
-  Cover_sensor.setTimeout(1000);
-  Cover_sensor.stopContinuous();
-  delay(300);
-  // start interleaved continuous mode with period of 100 ms
-  Cover_sensor.startInterleavedContinuous(500);
-  CalculateCoverRange();
-  CalculateCoverRange();
-  CalculateCoverRange();
-  if (! ina219.begin()) {
-    Serial.println("Failed to find INA219 chip");
-   
-  }
-  Serial.println("Measuring voltage and current with INA219 ...");
-  initSen55(); 
-  SetAccelerometer();
+  myservo.attach(SERVO_PIN);
+
   getSettings();
-  CheckDevices();
-  //readGaslevel();
-  AirPollution();
-  
-
-  xTaskCreatePinnedToCore(
-      blinkGreen, /* Task function. */
-      "Task1",    /* name of task. */
-      10000,      /* Stack size of task */
-      NULL,       /* parameter of the task */
-      1,          /* priority of the task */
-      &Task1,     /* Task handle to keep track of created task */
-      0);         /* pin task to core 0 */
- 
-  Serial.println("NFC Reader Start reading...");
-
-  if (Sen6==1) 
-  while (millis() - start_time < 30000 && tagId == "" && Garbagecollection==0)
-  {
-   //if ( CoverStatus!=Locker_Closed)
-   // CalculateCoverRange();
-   readNFC();
-   ReadAccelerometer();
-   ProceessAccelerometer();
-  }
   restore_Tags();
   if (!readTaglist())
   {
@@ -3936,14 +3946,11 @@ void setup(void)
 
   //CheckNFC();
   checkFormat();
-
   //  File f = SPIFFS.open("/Serial", "r");          
   //  if (!f.available())
   //  initialize_Scale("bin_scale_test");
   //  f.close();
-  
   getSerial();
-  
   if (chgTimes != chgTimesNew)
   {
     Serial.println("chgTimes New ");
@@ -3952,32 +3959,29 @@ void setup(void)
     storeSettings();
   }
   getGr();
-  //test**********************************
-  checkFullBin();
- 
-  
-  getSettings();
-  
 
+  //test**********************************
+  //while (1==1)
+  // checkFullBin();
+   
   // Serial.println("++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++");
      Serial.println("**  DEDICATED TO THE MEMORY OF MY FATHER PRODROMO AND MY MOTHER NIKI**");
      Serial.println("********                     REST IN PEACE                      ******");
   // Serial.println("*******   ΜΗΤΕΡΑ ΣΕ ΕΥΧΑΡΙΣΤΩ ΠΟΛΥ ΠΟΥ ΜΕ ΜΕΓΑΛΩΣΕΣ ΓΕΡΟ ΚΑΙ ΔΥΝΑΤΟ  ********");
   // Serial.println("+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++");
      Serial.println("****************   STARTING   BINBOT SYSTEM  ver 6.0    ***************");
-  
-     
-    
-    
-   if (mustUnlock == 0)
+   
+  if (mustUnlock == 0)
       CheckNFC();
   if (mustUnlock == 1  )  unlock();
-      // Set-up modem  power pin
-       Serial.println("\nStarting Up Modem...");
-       pinMode(LED_PIN, OUTPUT);
-       digitalWrite(LED_PIN, HIGH);
-       Working_time_connecting = millis();
-       modemPowerOn(); 
+  initSen55();
+  start_timeAQ=millis()+2000;
+  delayTimer=millis();
+  //readGaslevel();
+ // Set-up modem  power pin
+  Serial.println("\nStarting Up Modem...");
+  Working_time_connecting = millis();
+  modemPowerOn(); 
    
  }
 boolean readTaglist()
@@ -4017,16 +4021,13 @@ void ScaleCal()
 void loop()
 {
    ScaleCal();
-   
+    
   if (stopWorking == 1)
     return;
   if (mustUnlock == 1)
     {
       unlock(); 
     }
-
-  ProceessAccelerometer();
-
   if (Lockstatus == 1 && lc == 0 && System_Tag == 0)
     lc = 1;
   // FIRST READ NFC -
@@ -4036,23 +4037,22 @@ void loop()
     CheckNFC();
   }
 
-  if (digitalRead(STATUSSCALE_PIN) == Locker_Opened)
+  if (CoverStatus == Locker_Opened)
       lock_time = 0;
-  //δεν ανιχνευτηκε κάποιο Tag
-  if (millis() - start_time > 20000 && tagId == "")
-  {
-    CloseScaleBin();
-    Working_time = millis() - Working_time;
-    Serial.println("SYSTEM POWER OFF DUE NO TAG DETECTION");
-   // if (Lockstatus == 1 )
-    lockByServo();
-    beep(2);
-    done();
-  }
-
+     //δεν ανιχνευτηκε κάποιο Tag
+  if (millis() - start_time > 15000 && tagId == "")
+     {
+       CloseScaleBin();
+       Working_time = millis() - Working_time;
+       Serial.println("SYSTEM POWER OFF DUE NO TAG DETECTION");
+       //if (CoverStatus==Locker_Closed  )
+       //lockByServo();
+       beep(1);
+       done();
+     }
   
   //δεν ανοιξε ο κάδος λόγω προβλήματος ή  άλλου θέματος ή autostart
-  if (millis() - start_time > 20000 && System_Tag == 0)
+  if (millis() - start_time > 30000 && System_Tag == 0)
     if (CoverStatus==Locker_Closed  && lc == 0 && tagId != "")
     {
       CloseScaleBin();
@@ -4122,66 +4122,8 @@ void loop()
     return;
   }
 
-  //δεν έκλεισε ο Garbagecollector τον κάδο πάνω απο 120 δευτερόλεπτα
-  if (millis() - start_time > 120000 && start_time>0)
-    if (digitalRead(STATUSSCALE_PIN) == Locker_Opened && (Mainntanace == 1 || Garbagecollection == 1) && tagId != "") //&& lc == 1
-    {
-      Serial.println("Cover is opened too long");
-      // if (millis() - start_time > 50000 && millis() - start_time < 60000)
-      TagPresent=0;
-      if (millis() - start_time > 40000)
-      {
-        //beepDelay(1000);
-        // i = 0;
-        // if (tagId != "")
-        // while (we == 0 && i < 30)
-        //   {
-
-        //     readscale();
-        //     if (we == 1)
-        //       break; //change
-        //     i++;
-        //   }
-        StaticJsonDocument<250> doc;
-        binstatus = ProblemCoverIsOpentoLong;
-        doc["sst"] = binstatus;
-        doc["scd"] = DSN;
-        doc["dts"] = "timestamp";
-        doc["btr"] = batterylevel;
-        serializeJson(doc, s);
-        Serial.println(s);
-        Datalist.add(s);
-        
-        if (Garbagecollection == 1)
-        binstatus = Garbage_collection;
-      if (Mainntanace == 1)
-        binstatus = Maintenance;
-        doc["sst"] = binstatus;
-        doc["scd"] = DSN;
-        doc["dts"] = "timestamp";
-        doc["btr"] = batterylevel;
-        serializeJson(doc, s);
-        Serial.println(s);
-        Datalist.add(s);
-        gr++;
-        storeGr();
-        store_Datalist(gr);
-        enablePost = 1;
-        transmit_data();
-        working_period = 0;
-        //start_time = millis();
-        if (CoverStatus==Locker_Closed  )
-          lockByServo();
-        Serial.println("SYSTEM POWER OFF");
-        beep(2);
-
-        done();
-        done();
-        ESP.restart();
-      }
-    }
-
-  //*******************  O ΚΑΔΟΣ ΕΚΛΕΙΣΕ ΚΑΙ ΠΡΕΠΕΙ ΝΑ ΣΤΕΙΛΕΙ ΔΕΔΟΜΕΝΑ ********************
+     
+  //*******************  O ΚΑΔΟΣ ΕΚΛΕΙΣΕ ΚΑΙ ΠΡΕΠΕΙ ΝΑ ΣΤΕΙΛΕΙ ΔΕΔΟΜΕΝΑ  ********************
      if (CoverStatus==Locker_Closed  && lock_time==0)
       { 
         lock_time = millis();
@@ -4189,9 +4131,11 @@ void loop()
         lock_time = millis()-10000;
       }
  
+      //*******************  O ΚΑΔΟΣ ΕΚΛΕΙΣΕ η ΕΜΕΙΝΕ ΑΝΟΙΧΤΟΣ ΑΠΟ ΤΟΝ ΔΗΜΟ >15000  ********************
   if ((CoverStatus==Locker_Closed  && lc == 1 && (millis() - lock_time > 2000 &&  lock_time>0)   )  
-      || (digitalRead(STATUSSCALE_PIN) == Locker_Opened &&  (millis() - start_time)>15000  && Garbagecollection == 0 &&
-       Mainntanace == 0))
+      || (CoverStatus == Locker_Opened &&  (millis() - start_time)>35000  && Garbagecollection == 0 &&  Mainntanace == 0
+      || ScaleStartWeighting==1 && Garbagecollection == 0 &&  Mainntanace == 0)
+      || (CoverStatus == Locker_Opened &&  (millis() - start_time)>180000  && Garbagecollection == 1 ))
    {
     
    // lock_time = millis();    
@@ -4205,8 +4149,7 @@ void loop()
         Serial.println("Ο δημότης πεταξε τα σκουπίδια μέσα και το σύστημα πρέπει να τα ζυγίσει και να τα στείλει ");
       lc = 0;
     }
-    if ( CoverStatus==Locker_Closed )
-      lockByServo();
+   
 
     //******************* Ο δημότης πεταξε τα σκουπιδια μέσα και το σύστημα πρέπει να τα ζυγίσει και να τα στείλει *************
     if (Garbagecollection == 0)
@@ -4216,14 +4159,14 @@ void loop()
 
       //********  ΖΥΓΙΣΗ ΣΚΟΥΠΙΔΙΩΝ  **********
       {
-        i = 0;
-        while (we == 0 && i < 30)
+        int i=0;
+        while (we == 0 && (WeightList.size()  < 30 ) )
         {
-
-          readscale();
-          if (we == 1)
-            break; //change
           i++;
+          readscale();
+          if (we == 1 || i>60)
+            break; //change
+          
         }
       }
     }
@@ -4248,20 +4191,21 @@ void loop()
       storeGr();
       store_Datalist(gr);
       enablePost = 1;
-      Garbagecollection = 0;
+       
     }
+   
     //*******************************************************************************************************************************'
     if ( CoverStatus==Locker_Closed )
     lockByServo();
- 
+    //*******************************************************************************************************************************'
+    if ( !checkSamePlace() )
+    {    
+       prepare_Wifi_Gps_Data(NewLocationDetected);
+    }
     transmit_data();
-
-    if (millis() - start_time > 45000 && start_time>0)
-    if (digitalRead(STATUSSCALE_PIN) == Locker_Opened && Mainntanace == 0 && Garbagecollection == 0 && tagId != "") //&& lc == 1
+     
+    if  (CoverStatus == Locker_Opened &&  (millis() - start_time)>50000  && Garbagecollection == 0 &&  Mainntanace == 0)
     {
-      Serial.println("Cover is opened too long");
-      // if (millis() - start_time > 50000 && millis() - start_time < 60000)
-      TagPresent=0;
       StaticJsonDocument<250> doc;
       binstatus = ProblemCoverIsOpentoLong;
       doc["sst"] = binstatus;
@@ -4269,16 +4213,15 @@ void loop()
       doc["dts"] = "timestamp";
       doc["btr"] = batterylevel;
       serializeJson(doc, s);
-     // modem_on(); 
-      if (dt!="")
-      s.replace("timestamp", dt);
       Serial.println(s);
       Datalist.add(s);
       gr++;
       storeGr();
       store_Datalist(gr);
+      enablePost = 1;
       transmit_data();
     }
+     
     working_period = 0;
     if ( CoverStatus==Locker_Closed )
     lockByServo();
