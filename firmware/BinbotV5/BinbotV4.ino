@@ -173,6 +173,7 @@ LinkedList<Tag *> Taglist = LinkedList<Tag *>();
 PN532_I2C pn532_i2c(Wire);
 NfcAdapter nfc = NfcAdapter(pn532_i2c);
 String tagId = "";
+String tagId1 = "";
 String userId = "";
 byte nuidPICC[4];
 String dt="";
@@ -1022,17 +1023,25 @@ void blinkGreen(void *pvParameters)
       
     // if ( digitalRead(STATUSSCALE_PIN) == Locker_Closed)  lockByServo();
      checkCover();
-     if ( StartWeighting() && ScaleStartWeighting==0 && wa >= 6 && tagId!="")
-     {
-          ScaleStartWeighting=1;
-          Serial.println("**** Scale Start Weighting ****");
-     }
-    {
 
-      if (millis() - start_time1 > 8000 && millis() - start_time1 < 12000 && wa < 6) 
+     if (millis() - start_time1 > 8000  && wa < 6) 
       {
         readscale1();
       }
+
+  if ( StartWeighting() && ScaleStartWeighting==0 && wa >= 6 && tagId!="")
+   {
+        ScaleStartWeighting=1;
+        
+        Serial.println("Bin is opened by the citizen");
+        Serial.println("**** Scale Start Weighting ****");
+         
+        TagPresent=0; 
+        start_time = millis();
+   }
+    {
+
+  
 
       // if (scaleIsConnected == 0)
       // if (Serial1.available())
@@ -1382,12 +1391,7 @@ boolean secure_postlog_gprs1()
   return ret;
 }
 
-void GPSPowerOn()
-{
-  sendGSM("AT+CGNSPWR=1", 2000);
-  for (int i = 0; i < 20; i++)
-    sendGSM("AT+CGNSINF", 500);
-}
+ 
 
 String s;
 void store_Datalist(int g)
@@ -1813,36 +1817,38 @@ void readscale()
    
 }
 
+
 void readscale1()
 {
   String str;
-  scaleIsConnected = 1;
+  scaleIsConnected = 0;
   //delay(100);
   while (Serial1.available())
   {
-    //scaleIsConnected = 1;
+
+    scaleIsConnected = 1;
     str += Serial1.readStringUntil('\n');
     str.trim();
     // Serial.println("Weight:" + str); //Forward what Software Serial received to Serial Port
-    // ParseSerialData(str,";");
+    // ParseSerialData(str,";");f
     str.replace("kg", "");
     str.replace("+", "");
     str.replace("wn", "");
     weight = str.toDouble();
-    if (weight == weight )
+  if (weight == weight )
     {
       Serial.println("Weight:" + String(weight));
-      if (wa>0 ) WeightList.add(weight); //&& weight>0.00
+      if (wa>0 && weight>0.00) WeightList.add(weight);
       wa++;
       Serial.println("A:" + String(wa));
     }
     if (WeightList.size() > 10)
       WeightList.remove(0);
     Serial.println("WeightA:" + str);
-    scaleIsConnected =0;
     return;
   }
 }
+
 
 void ParseSerialData(String text, String splitChar)
 {
@@ -2211,14 +2217,15 @@ void readNFC()
 void CheckNFC()
 {
   // Serial.println("Nfc read" );
-  if (tagId != ""  &&  mustUnlock == 0)
+  if (tagId != ""  && tagId1!=tagId &&  mustUnlock == 0)
   {
    // modemPowerOn();
     {
       if (checkTags()  )
        // if (mustUnlock == 0)
         {
-          
+          if (tagId1!=tagId)
+          tagId1=tagId;
           if ((Garbagecollection == 0 && Mainntanace == 0)) // !checkFullBin()  && // && digitalRead(STATUSSCALE_PIN) == Locker_Closed
             mustUnlock = 1;
           start_time = millis();
@@ -2725,53 +2732,7 @@ String printMacAddress(byte mac[6]) {
   Serial.print(mac[5],HEX);
 
   return (String(mac[0],HEX) + ":" + String(mac[1],HEX) + ":" + String(mac[2],HEX) + ":" + String(mac[3],HEX) + ":" + String(mac[4],HEX) + ":" + String(mac[5],HEX));
-}
-void scanWifi_()
-{
-  WiFi.mode(WIFI_STA);
-  delay(5000);
-  int tries = 0;
-
-  while (WiFi.status() != WL_CONNECTED && tries < 10)
-  {
-    Serial.print('.');
-    tries++;
-    delay(1000);
-  }
-
-  Serial.println("Setup done");
-  // WiFi.scanNetworks will return the number of networks found
-  int n = WiFi.scanNetworks();
-  Serial.println("scan done");
-  if (n == 0)
-  {
-    Serial.println("no networks found");
-  }
-  else
-  {
-    Serial.print(n);
-    Serial.println(" networks found");
-    for (int i = 0; i < n; ++i)
-    {
-      // Print SSID and RSSI for each network found
-      Serial.print(i + 1);
-      Serial.print(": ");
-      Serial.print(WiFi.SSID(i));
-      
-      //Serial.println(WiFi.BSSIDstr(i));
-      String BSr;
-      BSr=WiFi.BSSIDstr(i);
-      BSr.substring(BSr.indexOf(":")-2,BSr.length());
-      Serial.println("->" +BSr);     
-
-      delay(10);
-    }
-  }
-  Serial.println("");
-
-  // Wait a bit before scanning again
-}
-
+} 
 
 
 void openWifi()
@@ -2808,85 +2769,7 @@ void restore_Aps()
   f.close();
   SPIFFS.end();
 }
-
-boolean scanWifi(String s="")
-{
-    openWifi();
-    APs="";
-     
-  String ssid;
-  int32_t rssi;
-  uint8_t encryptionType;
-  uint8_t* bssid;
-  int32_t channel;
-  bool hidden;
-  int scanResult;
-
-  Serial.println(F("Starting WiFi scan..."));
-
-  scanResult = WiFi.scanNetworks(/*async=*/false, /*hidden=*/true);
-
-  if (scanResult == 0) {
-    Serial.println(F("No networks found"));
-  } else if (scanResult > 0) {
-    Serial.printf(PSTR("%d networks found:\n"), scanResult);
-
-    // Print unsorted scan results
-    for (int8_t i = 0; i < scanResult; i++) {
-    if (i >5) break;
-      WiFi.getNetworkInfo(i, ssid, encryptionType, rssi, bssid, channel);
-
-      Serial.printf(PSTR("  %02d: [CH %02d] [%02X:%02X:%02X:%02X:%02X:%02X] %ddBm %c  %s\n"),
-                    i,
-                    channel,
-                    bssid[0], bssid[1], bssid[2],
-                    bssid[3], bssid[4], bssid[5],
-                    rssi,
-                    (encryptionType == WIFI_AUTH_OPEN) ? ' ' : '*',
-                     
-                    ssid.c_str());
-            String mac=printMacAddress(bssid) ;                  
-            if (APs=="") 
-               APs= "{\"RSSI\":"  + String("\"") +  String(rssi) + "\","  + "\"MAC\":" + "\"" + mac  + "\"}"; 
-            
-            else
-            APs=APs+ ",{\"RSSI\":" + String("\"") +  String(rssi) +"\","  + "\"MAC\":" + "\"" + mac  +"\"}"; 
-            if ( s.indexOf(mac) >0 && s!="")
-            {
-                Serial.println(" - Same Place stop logging");
-                return true;
-            }
-      delay(0);
-    }
-  } else {
-    Serial.printf(PSTR("WiFi scan error %d"), scanResult);
-  }
-       
-    delay(10);
-     
-    APs="[" + APs + "]";
-    
-    Serial.println(APs);
-    store_Aps();
-    closeWifi();
-    return false;
-     
-}
-boolean checkSamePlace()
-{
-  restore_Aps();
-  if (APs_!="")
-  {
-       Serial.println(APs_);
-      if ( scanWifi(APs_))
-       {
-          return true;
-       }
-    
-  }
-  
-  return false;
-}
+ 
 void setup(void)
 {
   pinMode(DONE_PIN, OUTPUT);
@@ -3042,6 +2925,10 @@ void ScaleCal()
         {
           weightA = weightA / WeightList.size();
           WeightList.clear();
+          if (!isnan(weightA)) weightA=0.0 ;
+          if (weightA !=weightA) weightA=0.0 ;
+           if (weightA!=INFINITY) weightA=0.0 ;
+        
           Serial.println("Weight Offset --> " + String(weightA));
         }
       }
@@ -3061,7 +2948,7 @@ void loop()
   if (LockStatus == 1 && lc == 0 && millis()-start_time>2000)
     lc = 1;
   // FIRST READ NFC -
-  if (LockStatus == 0 )
+  if (LockStatus == 0 &&  (tagId1!=tagId) )
   {
     readNFC();
     CheckNFC();
@@ -3221,9 +3108,8 @@ void loop()
       }
  
   if ((digitalRead(STATUSSCALE_PIN) == Locker_Closed && lc == 1 && (millis() - lock_time > 2000 &&  lock_time>0))  
-      || (ScaleStartWeighting==1 && Garbagecollection == 0 &&  Mainntanace == 0)
-      || (digitalRead(STATUSSCALE_PIN) == Locker_Opened &&  (millis() - start_time)>15000  && Garbagecollection == 0 &&
-       Mainntanace == 0))
+      || (ScaleStartWeighting==1 && Garbagecollection == 0 &&  Mainntanace == 0 &&  lock_time>3000)
+      || (digitalRead(STATUSSCALE_PIN) == Locker_Opened &&  (millis() - start_time)>15000  && Garbagecollection == 0 &&  Mainntanace == 0))
    {
     
    // lock_time = millis();    
@@ -3248,20 +3134,19 @@ void loop()
 
       //********  ΖΥΓΙΣΗ ΣΚΟΥΠΙΔΙΩΝ  **********
       {
-        
+        Serial.println("ΖΥΓΙΣΗ ΣΚΟΥΠΙΔΙΩΝ ");
         int i=0;
         while (we == 0 && (WeightList.size()  < 30 ) )
         {
           i++;
           readscale();
-          if (we == 1 || i>60)
+          if (we == 1 || i>200)
             break; //change
           
         }
       }
       }
-    }
-    
+        
     CloseScaleBin();
     if ( digitalRead(STATUSSCALE_PIN) == Locker_Closed)  lockByServo();
     if (Garbagecollection == 1 || Mainntanace == 1)
@@ -3321,6 +3206,6 @@ void loop()
     done();
     ESP.restart();
   }
-
-  //step=3;
 }
+  //step=3;
+
