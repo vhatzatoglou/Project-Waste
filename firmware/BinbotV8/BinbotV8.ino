@@ -222,7 +222,8 @@ int binOrientation=0;
 #define DONE_PIN 18        //OUTPUT
 #define ALARM_PIN 13       //OUTPUT
 #define GREEN_PIN 23       //OUTPUT
-#define LOCKER_PIN 33      //OUTPUT TRIGGER LOCKER
+#define SERVO_POWER 32     //OUTPUT NFC SERVO POWER ON/OFF  
+#define CHARGING_POWER 35     //OUTPUT CHARGING ON/OFF 
 #define SCALE_ONOFF_PIN 14 //OUTPUT TRIGGER TO OPEN INDICATOR
 #define SERVO_PIN 05
 
@@ -262,6 +263,7 @@ SensirionI2CSen5x sen5x;
 Servo myservo; // create servo object to control a servo
 
 LinkedList<String> Datalist = LinkedList<String>();
+LinkedList<String> Batterylist = LinkedList<String>();
 LinkedList<String> LostDatalist = LinkedList<String>();
 LinkedList<int> LostData = LinkedList<int>();
 LinkedList<double> WeightList = LinkedList<double>();
@@ -382,6 +384,7 @@ void store_Tag(int type, String Id)
   s = "";
   SPIFFS.end();
 }
+
 void restore_Tags()
 {
   SPIFFS.begin();
@@ -418,15 +421,18 @@ int pos1 = 0;
 void lockByServo()
 {
  // myservo.attach(SERVO_PIN); 
-  //  if ( Lockstatus==1)
-  //   return;
+  if (Servo_i==75)
+   return;
  //if (CoverStatus ==Locker_Closed)
+    pinMode(SERVO_POWER, OUTPUT);
+    digitalWrite(SERVO_POWER, HIGH);
+    Serial.println("locking : " );
     if (CoverStatus ==Locker_Closed)
     while (Servo_i<75)
     {
       Servo_i++;
       myservo.write(Servo_i); //turn servo by 1 degrees
-      delay(15);        //delay for smoothness
+      delay(20);        //delay for smoothness
        
     }
   //  for(int i=3; i<=85; i+=1)
@@ -447,6 +453,7 @@ void lockByServo()
    checkObstacle=true;
    ultime=0;
    
+   digitalWrite(SERVO_POWER, LOW);
   // storeSettings();
 }
 void beepDelay(int period = 1000)
@@ -471,6 +478,8 @@ void UnlockByServo()
  
   if (ultime == 0)
   {
+    pinMode(SERVO_POWER, OUTPUT);
+    digitalWrite(SERVO_POWER, HIGH);
     Serial.println("Unlocking");
     
      ultime++; 
@@ -482,6 +491,7 @@ void UnlockByServo()
       delay(15);        //delay for smoothness
       ultime++;
     }
+    digitalWrite(SERVO_POWER, LOW);
     beepDelay(250);
   }
  // storeSettings();
@@ -539,13 +549,16 @@ void check_battery()
       battery_time=millis();
       I2cbusy=1;
       current_mA = ina219.getCurrent_mA();
-      Serial.print("Current:       "); Serial.print(current_mA); Serial.println(" mA");
-      
+      Serial.print("Current:       "); 
+      Serial.print(current_mA); Serial.println(" mA");
+      Batterylist.add(String(current_mA) + " mA");
+      //store_Batterylist();
+    
       
       I2cbusy=0;
-      if (!isnan(current_mA)) return;
-      if (current_mA ==current_mA)
-       if (current_mA!=INFINITY)
+      
+      if (current_mA ==current_mA && current_mA!=INFINITY && !isnan(current_mA))
+       
       Total_mA=Total_mA+current_mA;
        
       if (current_mA>2000 )
@@ -1327,15 +1340,18 @@ void blinkGreen(void *pvParameters)
      if (millis() - start_time > 8000 && wa < 6)
       {
         readscale1();
-
+        ScaleCal();
       }
-    if (initSen55_==1 && wa >= 6  && millis()-start_timeAQ>2000 ) 
+       
+    if (initSen55_==1 && wa ==20  && millis()-start_timeAQ>2000 )  //
      {
        AirPollution();
        start_timeAQ=millis();
      }
     }
-   if ( StartWeighting() && ScaleStartWeighting==0 && wa >= 6 && tagId!="")
+
+   if (ScaleStartWeighting==0)
+   if ( StartWeighting()  && wa ==20 && tagId!="" &&  (millis() - start_time)>18000)
    {
         ScaleStartWeighting=1;
         Serial.println("**** Scale Start Weighting ****");
@@ -1517,11 +1533,15 @@ void openScale()
 }
 void openScaleBin()
 {
-
+ //******* Open Scale to calibrate  **********
+  Serial1.begin(9600, SERIAL_8N1, RXSCALE_PIN, TXSCALE_PIN, TXSCALE_PIN); //Scale port
   pinMode(SCALE_ONOFF_PIN, OUTPUT);
   digitalWrite(SCALE_ONOFF_PIN, HIGH);
 
   Serial.println("************* OpenScale ***************** ");
+
+ 
+  
 }
 
 void CloseScaleBin()
@@ -1825,6 +1845,111 @@ void restore_Datalist(int g)
     f.close();
   }
 }
+
+
+void store_Batterylist()
+{
+  SPIFFS.begin();
+  s = "";
+  const size_t CAPACITY = JSON_ARRAY_SIZE(250);
+  StaticJsonDocument<CAPACITY> doc;
+  Serial.println("Store Battery" );
+  JsonArray array;
+  File f;
+  f = SPIFFS.open("/Battery" , "w");
+  if (!f)
+  {
+
+    Serial.println("file open failed");
+  }
+  else
+  {
+    array = doc.to<JsonArray>();
+    int o;
+
+    for (int i = 0; i < Batterylist.size(); i++)
+    {
+
+      array.add((Batterylist.get(i)));
+      // if (i%10==0 && Datalist.size()>=10)
+      // {
+      //         serializeJson(doc, s);
+      //         Serial.println("Store Tag data" + s);
+      //         f.println(s);
+      //         doc.clear();
+      //         array = doc.to<JsonArray>();
+      //         s = "";
+      //         o++;
+      // }
+    }
+
+    serializeJson(doc, s);
+    if (s != "")
+    {
+
+      Serial.println("Store Batterylist" + s);
+      f.println(s);
+      doc.clear();
+      s = "";
+    }
+  }
+   
+  f.close();
+  doc.clear();
+  
+  s = "";
+}
+
+void restore_Batterylist()
+{
+  SPIFFS.begin();
+  s = "";
+  //ESP.getMaxAllocHeap()
+  const size_t CAPACITY = JSON_ARRAY_SIZE(250);
+  Datalist.clear();
+  Serial.println("/Batterylist");
+  StaticJsonDocument<CAPACITY> doc;
+  File f;
+
+  f = SPIFFS.open("/Battery" , "r");
+  if (f)
+  {
+
+    while (f.available())
+    {
+
+      s = f.readStringUntil('\n');
+      s.trim();
+
+      Serial.println("Restore Batterylist " + s);
+
+      DeserializationError error = deserializeJson(doc, s);
+
+      
+      if (error)
+      {
+        //Serial.println(F("Failed to read gravityList"));
+      }
+      else
+      {
+        JsonArray array = doc.as<JsonArray>();
+        for (JsonVariant v : array)
+        {
+          // if (!v.isNull())
+          // Batterylist.add(v.as<String>());
+        }
+        doc.clear();
+      }
+      doc.clear();
+      s = "";
+    }
+
+    f.close();
+  }
+}
+
+ 
+
 void store_LostDatalist(int g)
 {
   SPIFFS.begin();
@@ -2093,6 +2218,7 @@ void readscale()
   String str;
   scaleIsConnected = 1;
   delay(100);
+  if(Serial1.available()>=1)
   while (Serial1.available())
   {
      
@@ -2118,9 +2244,10 @@ void readscale()
   //    PutDataBuff();
   //    we = 1;
   // }
-  if (checkWeight() == true) //&& CoverStatus == Locker_Closed
+  if (weight>weightA)
+  if (checkWeight() == true ) //&& CoverStatus == Locker_Closed
   {
-    if (weightA == weightA && (weight)>(weightA+0.9))
+    if (weightA == weightA)
       weightF = abs(abs(weight) - abs(weightA));
     else
       weightF = abs(weight);
@@ -2172,6 +2299,7 @@ void readscale1()
   String str;
   scaleIsConnected = 0;
   //delay(100);
+  if (Serial1.available()>=1)
   while (Serial1.available())
   {
 
@@ -2452,7 +2580,7 @@ int CheckCoverSTatus()
 {
     
   // Serial.println("**** Check Cover****");
-  if (dist1<15 &&  CoverStatus!=Locker_Closed)
+  if (dist1<80 &&  CoverStatus!=Locker_Closed)//17
     { 
        Serial.println("Cover is  Closed : " + String(dist1));
        checkClosed++;
@@ -2467,13 +2595,13 @@ int CheckCoverSTatus()
 
        return CoverStatus;
     }
-   if (dist1>25 &&  CoverStatus==Locker_Closed )
+   if (dist1>100 && dist1<255 &&  CoverStatus==Locker_Closed )//25
    {
      Serial.println("Cover is  Opened : "  + String(dist1));
          checkOpened++;
        if (checkOpened==2)
        {
-          CoverStatus=Locker_Opened;
+           CoverStatus=Locker_Opened;
            checkOpened=0;
            checkClosed=0;
            checkCoverBin();
@@ -2521,7 +2649,7 @@ void checkCoverBin()
 {
   if (CoverStatus ==Locker_Opened)
   {
-    pinMode(LOCKER_PIN, INPUT);
+   
     if ( Garbagecollection == 0) 
     Serial.println("Bin is opened by the citizen");
     //if (scaleIsConnected == 0 && Garbagecollection == 0) // open scale if citizen is here
@@ -2536,7 +2664,7 @@ void checkCoverBin()
 void unlock()
 {
    UnlockByServo(); 
-   CalculateCoverRange();
+  // CalculateCoverRange();
 
 }
 
@@ -2645,7 +2773,7 @@ void readNFC()
     tagId.replace(" ", "");
     open_cover_time = millis();
     working_period = millis();
-   
+ 
     // if (CoverStatus ==Locker_Opened)
     //   beepDelay(250);
     if (Lockstatus == 1) //checkTags()==false && //TEST
@@ -2666,7 +2794,7 @@ void CheckNFC()
   // Serial.println("Nfc read" );
   if (tagId != "" && tagId1!=tagId &&  mustUnlock == 0)
   {
-     // CalculateCoverRange();
+     // CalculateCoverRange(); 
  
     {
       if (checkTags())
@@ -2675,8 +2803,7 @@ void CheckNFC()
           if ((Garbagecollection == 0 && Mainntanace == 0)) // !checkFullBin()  && // && CoverStatus ==Locker_Closed
             mustUnlock = 1;
 
-        if (tagId1!=tagId)
-           tagId1=tagId;
+         
           // beep(1);
           String covr;
           if (CoverStatus ==Locker_Opened)
@@ -3447,13 +3574,7 @@ void test()
   gr = -1;
   storeGr();
   Datalist.clear();
-  if (CoverStatus ==Locker_Opened)
-  {
-    pinMode(LOCKER_PIN, OUTPUT);
-    digitalWrite(LOCKER_PIN, HIGH);
-    delay(500);
-    pinMode(LOCKER_PIN, INPUT);
-  }
+  
   // StaticJsonDocument<250> doc;
 
   //         binstatus = Garbage_collection;
@@ -3836,7 +3957,7 @@ void initSen55()
 // Print SEN55 module information if i2c buffers are large enough
 #ifdef USE_PRODUCT_INFO
 printSerialNumber();
-printModuleVersions();
+//printModuleVersions();
 #endif
 
 float tempOffset = 0.0;
@@ -3876,17 +3997,21 @@ Serial.println("******* CheckDevices  **********");
 
 void setup(void)
 {
+   
+  
+  // pinMode(CHARGING_POWER, OUTPUT);
+  // digitalWrite(CHARGING_POWER, HIGH); 
+  // delay(10000);
   Green();
-
+  Serial.begin(115200);
   Wire.begin(); 
   Cover_sensor.begin();
   //CalculateCoverRange();
   sen5x.begin(Wire);
-  CheckDevices();
   
-  //******* Open Scale to calibrate  **********
-  Serial1.begin(9600, SERIAL_8N1, RXSCALE_PIN, TXSCALE_PIN, TXSCALE_PIN); //Scale port
-  
+  pinMode(SERVO_POWER, OUTPUT);
+  digitalWrite(SERVO_POWER, HIGH);
+
   openScaleBin();
   closeWifi(); 
 
@@ -3901,12 +4026,12 @@ void setup(void)
     1,          /* priority of the task */
     &Task1,     /* Task handle to keep track of created task */
     0);         /* pin task to core 0 */
- // openWifi();
+//  // openWifi();
 
- 
+
  SetAccelerometer();
- Serial.begin(115200);
-  
+ CheckDevices();
+ //restore_Batterylist(); 
  if (! ina219.begin()) {
   Serial.println("Failed to find INA219 chip");
 }
@@ -3917,7 +4042,25 @@ Serial.println("NFC Reader Start reading...");
   readNFC();
   ReadAccelerometer();
  }
-  
+ 
+ 
+//  while (1==1)
+//  {
+//   checkFullBin() ;
+//   CalculateCoverRange();
+//  }
+//delay(10000);
+//δεν ανιχνευτηκε κάποιο Tag
+ if (tagId == "")
+      {
+        CloseScaleBin();
+        Working_time = millis() - Working_time;
+        Serial.println("SYSTEM POWER OFF DUE NO TAG DETECTION");
+        //if (CoverStatus==Locker_Closed  )
+        //lockByServo();
+        beep(1);
+        done();
+      }
   //********************************************
   //prepare_Wifi_Gps_Data(Violation_Tilt);
   Working_time = millis();
@@ -3946,10 +4089,10 @@ Serial.println("NFC Reader Start reading...");
 
   //CheckNFC();
   checkFormat();
-  //  File f = SPIFFS.open("/Serial", "r");          
-  //  if (!f.available())
-  //  initialize_Scale("bin_scale_test");
-  //  f.close();
+   File f = SPIFFS.open("/Serial", "r");          
+   if (!f.available())
+   initialize_Scale("bin_scale_test");
+   f.close();
   getSerial();
   if (chgTimes != chgTimesNew)
   {
@@ -3994,9 +4137,10 @@ boolean readTaglist()
   return false;
 }
 int counter;
+
 void ScaleCal()
 {
-      if (wa >= 3 and wa<20) 
+      if (wa >=5 and wa<20) 
       {
         wa=20;
         
@@ -4007,31 +4151,32 @@ void ScaleCal()
         }
         {
           weightA = weightA / WeightList.size();
-          if (weightA!=weightA)
-          weightA=0;
           WeightList.clear();
+          if (isnan(weightA)) weightA=0.0 ;
+          if (weightA !=weightA) weightA=0.0 ;
+           if (weightA==INFINITY) weightA=0.0 ;
+        
           Serial.println("Weight Offset --> " + String(weightA));
         }
       }
-
-
-        
+       
 }
+
 
 void loop()
 {
-   ScaleCal();
+  
     
   if (stopWorking == 1)
     return;
-  if (mustUnlock == 1)
+  if (mustUnlock == 1 )
     {
       unlock(); 
     }
   if (Lockstatus == 1 && lc == 0 && System_Tag == 0)
     lc = 1;
   // FIRST READ NFC -
-  if ( mustUnlock == 0 &&  (tagId1!=tagId))
+  if ( mustUnlock == 0 && Lockstatus==0 )
   {
     readNFC();
     CheckNFC();
@@ -4039,26 +4184,16 @@ void loop()
 
   if (CoverStatus == Locker_Opened)
       lock_time = 0;
-     //δεν ανιχνευτηκε κάποιο Tag
-  if (millis() - start_time > 15000 && tagId == "")
-     {
-       CloseScaleBin();
-       Working_time = millis() - Working_time;
-       Serial.println("SYSTEM POWER OFF DUE NO TAG DETECTION");
-       //if (CoverStatus==Locker_Closed  )
-       //lockByServo();
-       beep(1);
-       done();
-     }
+
   
   //δεν ανοιξε ο κάδος λόγω προβλήματος ή  άλλου θέματος ή autostart
-  if (millis() - start_time > 30000 && System_Tag == 0)
+  if (millis() - start_time > 25000 && System_Tag == 0)
     if (CoverStatus==Locker_Closed  && lc == 0 && tagId != "")
     {
       CloseScaleBin();
       Working_time = millis() - Working_time;
       Serial.println("SYSTEM POWER OFF BECAUSE COVER NOT OPENED");
-      lockByServo();
+      //lockByServo();
        
       mustUnlock = 0;
       TagPresent=0;
@@ -4133,12 +4268,12 @@ void loop()
  
       //*******************  O ΚΑΔΟΣ ΕΚΛΕΙΣΕ η ΕΜΕΙΝΕ ΑΝΟΙΧΤΟΣ ΑΠΟ ΤΟΝ ΔΗΜΟ >15000  ********************
   if ((CoverStatus==Locker_Closed  && lc == 1 && (millis() - lock_time > 2000 &&  lock_time>0)   )  
-      || (CoverStatus == Locker_Opened &&  (millis() - start_time)>35000  && Garbagecollection == 0 &&  Mainntanace == 0
+      || (CoverStatus == Locker_Opened &&  (millis() - start_time)>25000  && Garbagecollection == 0 &&  Mainntanace == 0
       || ScaleStartWeighting==1 && Garbagecollection == 0 &&  Mainntanace == 0)
       || (CoverStatus == Locker_Opened &&  (millis() - start_time)>180000  && Garbagecollection == 1 ))
    {
     
-   // lock_time = millis();    
+    lock_time = millis();    
         
     TagPresent=0;
     if (lc == 1)
@@ -4149,7 +4284,6 @@ void loop()
         Serial.println("Ο δημότης πεταξε τα σκουπίδια μέσα και το σύστημα πρέπει να τα ζυγίσει και να τα στείλει ");
       lc = 0;
     }
-   
 
     //******************* Ο δημότης πεταξε τα σκουπιδια μέσα και το σύστημα πρέπει να τα ζυγίσει και να τα στείλει *************
     if (Garbagecollection == 0)
@@ -4163,14 +4297,12 @@ void loop()
         while (we == 0 && (WeightList.size()  < 30 ) )
         {
           i++;
-          readscale();
-          if (we == 1 || i>60)
+             readscale();
+          if (we == 1 || i>200)
             break; //change
-          
         }
       }
     }
-    
     CloseScaleBin();
     if ( CoverStatus==Locker_Closed )  lockByServo();
     if (Garbagecollection == 1 || Mainntanace == 1)
