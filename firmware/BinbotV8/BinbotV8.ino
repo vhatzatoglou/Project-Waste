@@ -223,7 +223,8 @@ int binOrientation=0;
 #define ALARM_PIN 13       //OUTPUT
 #define GREEN_PIN 23       //OUTPUT
 #define SERVO_POWER 32     //OUTPUT NFC SERVO POWER ON/OFF  
-#define CHARGING_POWER 35     //OUTPUT CHARGING ON/OFF 
+#define CHARGING_POWER_OFF 33     //OUTPUT CHARGING ON/OFF 
+#define CHARGING_POWER_ON 19     //OUTPUT CHARGING ON/OFF 
 #define SCALE_ONOFF_PIN 14 //OUTPUT TRIGGER TO OPEN INDICATOR
 #define SERVO_PIN 05
 
@@ -499,14 +500,14 @@ void UnlockByServo()
 }
 
 
-void NFC_RST()
-{
-  Serial.println("NFC Restart");
-  pinMode(NFC_RST_PIN, OUTPUT);
-  digitalWrite(NFC_RST_PIN, LOW);
-  delay(1000);
-  pinMode(NFC_RST_PIN, INPUT);
-}
+// void NFC_RST()
+// {
+//   Serial.println("NFC Restart");
+//   pinMode(NFC_RST_PIN, OUTPUT);
+//   digitalWrite(NFC_RST_PIN, LOW);
+//   delay(1000);
+//   pinMode(NFC_RST_PIN, INPUT);
+// }
 
  
 
@@ -552,7 +553,9 @@ void check_battery()
       Serial.print("Current:       "); 
       Serial.print(current_mA); Serial.println(" mA");
       Batterylist.add(String(current_mA) + " mA");
-      //store_Batterylist();
+    
+  
+     //store_Batterylist();
     
       
       I2cbusy=0;
@@ -1345,13 +1348,13 @@ void blinkGreen(void *pvParameters)
        
     if (initSen55_==1 && wa ==20  && millis()-start_timeAQ>2000 )  //
      {
-       AirPollution();
+      // AirPollution();
        start_timeAQ=millis();
      }
     }
 
    if (ScaleStartWeighting==0)
-   if ( StartWeighting()  && wa ==20 && tagId!="" &&  (millis() - start_time)>18000)
+   if ( StartWeighting()  && wa ==20 && tagId!="" &&  (millis() - start_time)>12000)
    {
         ScaleStartWeighting=1;
         Serial.println("**** Scale Start Weighting ****");
@@ -1624,7 +1627,7 @@ boolean secure_postlog_gprs()
         SerialAT.println("AT+HTTPREAD");
         sendGSM("AT+HTTPREAD", 2000);
         Serial.println("httpContent:-> " + httpContent);
-        if (httpContent != "0" && httpContent != "1002" && httpContent != "4008")
+        if (httpContent != "0" && httpContent != "1002" && httpContent != "4008" && httpContent != "4002")
         {
           // LostDatalist.add(i);
           // store_LostDatalist();
@@ -2085,7 +2088,7 @@ void PutDataBuff()
   {
     getSettings();
     s = "";
-  
+    if (DSN=="") DSN="No_DSN_Scale";
     //getRTC();
     StaticJsonDocument<200> doc;
 
@@ -2580,7 +2583,7 @@ int CheckCoverSTatus()
 {
     
   // Serial.println("**** Check Cover****");
-  if (dist1<80 &&  CoverStatus!=Locker_Closed)//17
+  if (dist1<17 &&  CoverStatus!=Locker_Closed)//17
     { 
        Serial.println("Cover is  Closed : " + String(dist1));
        checkClosed++;
@@ -2595,7 +2598,7 @@ int CheckCoverSTatus()
 
        return CoverStatus;
     }
-   if (dist1>100 && dist1<255 &&  CoverStatus==Locker_Closed )//25
+   if (dist1>30 && dist1<255 &&  CoverStatus==Locker_Closed )//25
    {
      Serial.println("Cover is  Opened : "  + String(dist1));
          checkOpened++;
@@ -2883,7 +2886,7 @@ void CheckNFC()
 
 void done()
 {
-  
+ 
   stopWorking = 1;
   pinMode(LED_PIN, INPUT);
   Serial.println("Working_time:" + String((float)((float)Working_time / 10000.00)));
@@ -2947,7 +2950,7 @@ void transmit_data()
   if (gr >= 0) //   && enablePost==1
   {
     transmitData=1;
-    modem_on();
+    modem_on(); 
     while  ( isConnected==false && gf<60)
     {
      delay(500);
@@ -3013,7 +3016,7 @@ void transmit_data()
           //restore_LostDatalist(i1);
           if (Datalist.size() > 0)
             secure_postlog_gprs();
-          while (LostDatalist.size() != Datalist.size() && r < 20)
+          while (LostDatalist.size() != Datalist.size() && r < 10)
           {
             pinMode(LED_PIN, OUTPUT);
             digitalWrite(LED_PIN, LOW);
@@ -3997,25 +4000,25 @@ Serial.println("******* CheckDevices  **********");
 
 void setup(void)
 {
-   
-  
-  // pinMode(CHARGING_POWER, OUTPUT);
-  // digitalWrite(CHARGING_POWER, HIGH); 
-  // delay(10000);
+  pinMode(SERVO_POWER, OUTPUT);
+  digitalWrite(SERVO_POWER, HIGH);
   Green();
   Serial.begin(115200);
   Wire.begin(); 
   Cover_sensor.begin();
-  //CalculateCoverRange();
   sen5x.begin(Wire);
-  
-  pinMode(SERVO_POWER, OUTPUT);
-  digitalWrite(SERVO_POWER, HIGH);
 
   openScaleBin();
   closeWifi(); 
 
-  start_timeAQ=millis()+25000;
+  checkFormat();
+  File f = SPIFFS.open("/Serial", "r");          
+  //if (!f.available())
+  initialize_Scale("bin_scale_test");
+  f.close();
+  getSerial();
+
+  start_timeAQ=millis()+1000;
   //delayTimer=millis()+16000; 
 
   xTaskCreatePinnedToCore(
@@ -4041,13 +4044,15 @@ Serial.println("NFC Reader Start reading...");
  {
   readNFC();
   ReadAccelerometer();
+  //check_battery();
  }
  
- 
+//  delay(10000);
 //  while (1==1)
 //  {
 //   checkFullBin() ;
 //   CalculateCoverRange();
+//   //check_battery();
 //  }
 //delay(10000);
 //δεν ανιχνευτηκε κάποιο Tag
@@ -4058,7 +4063,7 @@ Serial.println("NFC Reader Start reading...");
         Serial.println("SYSTEM POWER OFF DUE NO TAG DETECTION");
         //if (CoverStatus==Locker_Closed  )
         //lockByServo();
-        beep(1);
+        //beep(1);
         done();
       }
   //********************************************
@@ -4088,12 +4093,8 @@ Serial.println("NFC Reader Start reading...");
   }
 
   //CheckNFC();
-  checkFormat();
-   File f = SPIFFS.open("/Serial", "r");          
-   if (!f.available())
-   initialize_Scale("bin_scale_test");
-   f.close();
-  getSerial();
+  
+   
   if (chgTimes != chgTimesNew)
   {
     Serial.println("chgTimes New ");
@@ -4112,7 +4113,7 @@ Serial.println("NFC Reader Start reading...");
      Serial.println("********                     REST IN PEACE                      ******");
   // Serial.println("*******   ΜΗΤΕΡΑ ΣΕ ΕΥΧΑΡΙΣΤΩ ΠΟΛΥ ΠΟΥ ΜΕ ΜΕΓΑΛΩΣΕΣ ΓΕΡΟ ΚΑΙ ΔΥΝΑΤΟ  ********");
   // Serial.println("+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++");
-     Serial.println("****************   STARTING   BINBOT SYSTEM  ver 6.0    ***************");
+     Serial.println("****************   STARTING   BINBOT SYSTEM  ver 8.0    ***************");
    
   if (mustUnlock == 0)
       CheckNFC();
@@ -4127,7 +4128,9 @@ Serial.println("NFC Reader Start reading...");
   modemPowerOn(); 
    
  }
-boolean readTaglist()
+
+
+ boolean readTaglist()
 {
   for (int i = 0; i < Taglist.size(); i++)
   {
@@ -4268,7 +4271,7 @@ void loop()
  
       //*******************  O ΚΑΔΟΣ ΕΚΛΕΙΣΕ η ΕΜΕΙΝΕ ΑΝΟΙΧΤΟΣ ΑΠΟ ΤΟΝ ΔΗΜΟ >15000  ********************
   if ((CoverStatus==Locker_Closed  && lc == 1 && (millis() - lock_time > 2000 &&  lock_time>0)   )  
-      || (CoverStatus == Locker_Opened &&  (millis() - start_time)>25000  && Garbagecollection == 0 &&  Mainntanace == 0
+      || (CoverStatus == Locker_Opened &&  (millis() - start_time)>30000  && Garbagecollection == 0 &&  Mainntanace == 0
       || ScaleStartWeighting==1 && Garbagecollection == 0 &&  Mainntanace == 0)
       || (CoverStatus == Locker_Opened &&  (millis() - start_time)>180000  && Garbagecollection == 1 ))
    {
@@ -4330,13 +4333,13 @@ void loop()
     if ( CoverStatus==Locker_Closed )
     lockByServo();
     //*******************************************************************************************************************************'
-    if ( !checkSamePlace() )
-    {    
-       prepare_Wifi_Gps_Data(NewLocationDetected);
-    }
+    // if ( !checkSamePlace() )
+    // {    
+    //    prepare_Wifi_Gps_Data(NewLocationDetected);
+    // }
     transmit_data();
      
-    if  (CoverStatus == Locker_Opened &&  (millis() - start_time)>50000  && Garbagecollection == 0 &&  Mainntanace == 0)
+    if  (CoverStatus == Locker_Opened &&  (millis() - start_time)>30000  && Garbagecollection == 0 &&  Mainntanace == 0)
     {
       StaticJsonDocument<250> doc;
       binstatus = ProblemCoverIsOpentoLong;
